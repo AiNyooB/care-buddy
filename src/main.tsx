@@ -1,0 +1,390 @@
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { I18nextProvider, useTranslation } from 'react-i18next';
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import App from './App';
+import { LockScreenSlave } from './components/LockScreenSlave';
+import { FloatingPreview } from './components/FloatingPreview';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import './styles/global.css';
+
+// 中文语言包
+const zhCN = {
+  app: {
+    title: 'CareBuddy',
+    subtitle: '关爱健康，从每一次提醒开始',
+    mainTitle: '该动了',
+    mainSubtitle: '久坐不是倔强，起身才是日常',
+    exerciseTitle: '运动库',
+    exerciseSubtitle: '把运动变成日常习惯，让健康成为生活常态',
+    statsTitle: '数据统计',
+    statsSubtitle: '每一次小行动，都在悄悄保护你的身体',
+  },
+  nav: {
+    main: '主界面',
+    exercise: '运动库',
+    stats: '统计',
+  },
+  stats: {
+    sitBreaks: '休息次数',
+    waterCups: '喝水次数',
+    workMinutes: '工作分钟',
+    exercisesCompleted: '运动次数',
+    packagesCompleted: '套餐完成',
+    totalExerciseMinutes: '运动时长',
+    title: '健康统计',
+    weeklyData: '本周数据',
+    weeklyTrend: '本周运动趋势',
+    monthlyMinutes: '本月运动时长',
+    totalSummary: '总计',
+    weeklyHabits: '本周习惯',
+    recordDays: '记录天数',
+    day: '日',
+  },
+  tasks: {
+    sit: { title: '久坐提醒', desc: '该起来活动了' },
+    water: { title: '喝水提醒', desc: '该喝口水了' },
+    eye: { title: '护眼提醒', desc: '让眼睛休息一下' },
+  },
+  taskNames: {
+    sit: '久坐提醒',
+    water: '喝水提醒',
+    eye: '用眼提醒',
+  },
+  taskDesc: {
+    sit: '坐姿超过45分钟，起身活动1-2分钟',
+    water: '每小时提醒喝一杯水，保持身体水分',
+    eye: '每工作45分钟，远眺6米外放松眼睛20秒',
+    default: '每{{interval}}分钟提醒一次',
+  },
+  time: {
+    minutes: '分钟',
+    seconds: '秒',
+    count: '次',
+    sec: '秒',
+    group: '组',
+  },
+  buttons: {
+    pause: '暂停',
+    resume: '继续',
+    resetAll: '全部重置',
+    addTask: '添加提醒',
+    gotIt: '我知道了',
+  },
+  settings: {
+    title: '系统设置',
+    language: '语言',
+    languageDesc: '切换界面显示语言',
+    lockScreen: '强制休息锁屏',
+    lockScreenDesc: '提醒时锁定屏幕，确保真正休息',
+    strictMode: '严格模式',
+    strictModeDesc: '开启后锁屏界面将隐藏紧急解锁按钮',
+    theme: '主题',
+    themeDesc: '选择浅色、深色或跟随系统',
+    system: '跟随系统',
+    light: '浅色',
+    dark: '深色',
+    autoUnlock: '自动解锁',
+    autoUnlockDesc: '倒计时结束后自动解除锁屏',
+    resetOnIdle: '空闲时重置',
+    resetOnIdleDesc: '检测到长时间未操作时自动重置',
+    autoStart: '开机自启',
+    autoStartDesc: '系统启动时自动运行',
+    idleThreshold: '空闲检测阈值',
+    idleThresholdDesc: '无操作超过此时间视为空闲（分钟）',
+    mergeThreshold: '合并窗口',
+    advanced: '高级设置',
+    taskManagement: '提醒管理',
+  },
+  exercise: {
+    library: '医学级运动库',
+    packages: '运动套餐',
+    all: '全部',
+    instructions: '执行说明',
+    whyImportant: '为何重要',
+    repetitions: '次数',
+    holdTime: '保持时间',
+    sets: '组数',
+    evidenceSource: '医学依据',
+    complete: '完成',
+    completed: '已完成',
+    markComplete: '标记完成',
+    guidedMode: '引导模式',
+    startPackage: '开始锻炼',
+    finishPackage: '完成套餐',
+    skip: '跳过',
+    next: '下一个',
+    exit: '退出',
+    title: '运动提醒',
+    packageComplete: '套餐完成！',
+  },
+  guided: {
+    getReady: '准备开始',
+    preparing: '准备开始…',
+    prep: '预备',
+    secondsRemaining: '剩余秒数',
+    remainingCycles: '剩余 {{count}} 次',
+    continuousHint: '保持节奏，连续完成',
+    speaking: '语音播报中',
+    completed: '完成！',
+    returning: '即将返回',
+    exit: '退出',
+    slaveHint: '请在主屏完成引导锻炼',
+  },
+  lock: {
+    title: '休息一下',
+    done: '完成了',
+    skip: '稍后提醒',
+    completed: '已完成',
+    strictModeHint: '严格模式中，请完成休息',
+    lookAtMainDisplay: '请在主显示器完成操作',
+  },
+  window: {
+    menu: '菜单',
+    about: '关于',
+    minimize: '最小化',
+    closeToTray: '关闭到托盘',
+  },
+  timerCarousel: {
+    empty: '暂无启用的提醒',
+    pauseAll: '暂停全部',
+    resumeAll: '继续全部',
+    resetAll: '重置全部',
+    taskPaused: '{{taskName}}已暂停',
+    preNotificationBody: '即将提醒，请准备',
+    allPaused: '全部提醒已暂停',
+    autoResume: '后自动切换',
+    remainingPercent: '剩余 {{percent}}%',
+    statusNormal: '所有提醒正常运行',
+    somePaused: '有提醒已暂停',
+  },
+  categories: {
+    spine: '脊柱与骨骼',
+    circulation: '血液循环',
+    metabolism: '代谢激活',
+    vision: '视力保护',
+    wrist: '神经/腕部',
+  },
+  statCards: {
+    workMinutes: '运行时长',
+    eyeCare: '护眼',
+    sitReminder: '久坐提醒',
+    waterReminder: '喝水提醒',
+    todayStats: '今日统计',
+    todaySubtitle: '不是记流水账，是完成的动力感',
+    todayExercise: '今日锻炼',
+    exercise: '动作',
+    package: '套餐',
+    streakTooltip: '已连续达标 {{days}} 天',
+    customReminders: '自定义提醒',
+  },
+};
+
+// 英文语言包
+const enUS = {
+  app: {
+    title: 'CareBuddy',
+    subtitle: 'Care for your health, start with every reminder',
+    mainTitle: 'Time to Move',
+    mainSubtitle: "Sitting isn't stubbornness, standing up is the daily norm",
+    exerciseTitle: 'Exercise Library',
+    exerciseSubtitle: 'Make exercise a daily habit, let health become a lifestyle',
+    statsTitle: 'Statistics',
+    statsSubtitle: 'Every small action is quietly protecting your body',
+  },
+  nav: {
+    main: 'Main',
+    exercise: 'Exercise',
+    stats: 'Stats',
+  },
+  stats: {
+    sitBreaks: 'Sit Breaks',
+    waterCups: 'Water Cups',
+    workMinutes: 'Work Minutes',
+    exercisesCompleted: 'Exercises',
+    packagesCompleted: 'Packages',
+    totalExerciseMinutes: 'Exercise Minutes',
+    title: 'Statistics',
+    weeklyData: 'Weekly Data',
+    weeklyTrend: 'Weekly Trend',
+    monthlyMinutes: 'Monthly Minutes',
+    totalSummary: 'Total Summary',
+    weeklyHabits: 'Weekly Habits',
+    recordDays: 'Record Days',
+    day: 'd',
+  },
+  exercise: {
+    library: 'Exercise Library',
+    packages: 'Exercise Packages',
+    all: 'All',
+    instructions: 'Instructions',
+    whyImportant: 'Why It Matters',
+    repetitions: 'Repetitions',
+    holdTime: 'Hold Time',
+    sets: 'Sets',
+    evidenceSource: 'Medical Evidence',
+    complete: 'Complete',
+    completed: 'Completed',
+    markComplete: 'Mark Complete',
+    guidedMode: 'Guided Mode',
+    startPackage: 'Start Workout',
+    finishPackage: 'Finish Package',
+    skip: 'Skip',
+    next: 'Next',
+    exit: 'Exit',
+    title: 'Exercise Reminder',
+    packageComplete: 'Package Complete!',
+  },
+  guided: {
+    getReady: 'Get Ready',
+    preparing: 'Preparing…',
+    prep: 'Prepare',
+    secondsRemaining: 'seconds remaining',
+    remainingCycles: '{{count}} reps remaining',
+    continuousHint: 'Keep pace, complete continuously',
+    speaking: 'Voice Guide Active',
+    completed: 'Complete!',
+    returning: 'Returning',
+    exit: 'Exit',
+    slaveHint: 'Complete guided exercise on main screen',
+  },
+  lock: {
+    title: 'Take a Break',
+    done: 'Done',
+    skip: 'Snooze',
+    completed: 'Completed',
+    strictModeHint: 'Strict mode enabled, please complete the break',
+    lookAtMainDisplay: 'Please complete the action on the main display',
+  },
+  tasks: {
+    sit: { title: 'Sit Reminder', desc: 'Time to stand up' },
+    water: { title: 'Water Reminder', desc: 'Time to drink water' },
+    eye: { title: 'Eye Reminder', desc: 'Rest your eyes' },
+  },
+  taskNames: {
+    sit: 'Stand Up',
+    water: 'Drink Water',
+    eye: 'Rest Eyes',
+  },
+  taskDesc: {
+    sit: 'Sit for 45+ min, stand and move for 1-2 min',
+    water: 'Drink a glass of water every hour',
+    eye: 'Rest your eyes, look 20ft away for 20s',
+    default: 'Remind every {{interval}} minutes',
+  },
+  settings: {
+    title: 'Settings',
+    language: 'Language',
+    languageDesc: 'Switch interface language',
+    lockScreen: 'Lock Screen',
+    lockScreenDesc: 'Lock screen on reminders to ensure real breaks',
+    strictMode: 'Strict Mode',
+    strictModeDesc: 'Hide emergency unlock button on lock screen',
+    theme: 'Theme',
+    themeDesc: 'Choose light, dark, or system theme',
+    system: 'System',
+    light: 'Light',
+    dark: 'Dark',
+    autoUnlock: 'Auto Unlock',
+    autoUnlockDesc: 'Auto dismiss lock screen when countdown ends',
+    resetOnIdle: 'Reset on Idle',
+    resetOnIdleDesc: 'Auto reset reminders when idle detected',
+    autoStart: 'Auto Start',
+    autoStartDesc: 'Launch app on system startup',
+    idleThreshold: 'Idle Threshold',
+    idleThresholdDesc: 'Minutes of inactivity to be considered idle',
+    mergeThreshold: 'Merge Window',
+    advanced: 'Advanced Settings',
+    taskManagement: 'Task Management',
+  },
+  buttons: {
+    pause: 'Pause',
+    resume: 'Resume',
+    resetAll: 'Reset All',
+    addTask: 'Add Task',
+    gotIt: 'Got It',
+  },
+  time: {
+    minutes: 'min',
+    seconds: 's',
+    count: ' reps',
+    sec: 's',
+    group: ' sets',
+  },
+  window: {
+    menu: 'Menu',
+    about: 'About',
+    minimize: 'Minimize',
+    closeToTray: 'Close to Tray',
+  },
+  timerCarousel: {
+    empty: 'No active reminders',
+    pauseAll: 'Pause All',
+    resumeAll: 'Resume All',
+    resetAll: 'Reset All',
+    taskPaused: '{{taskName}} paused',
+    preNotificationBody: 'Coming up soon, get ready',
+    allPaused: 'All reminders paused',
+    autoResume: 's auto resume',
+    remainingPercent: '{{percent}}% remaining',
+    statusNormal: 'All reminders active',
+    somePaused: 'Some reminders paused',
+  },
+  categories: {
+    spine: 'Spine & Bones',
+    circulation: 'Blood Circulation',
+    metabolism: 'Metabolism',
+    vision: 'Eye Protection',
+    wrist: 'Nerve & Wrist',
+  },
+  statCards: {
+    workMinutes: 'Work Time',
+    eyeCare: 'Eye Care',
+    sitReminder: 'Sit Reminder',
+    waterReminder: 'Water Reminder',
+    todayStats: "Today's Stats",
+    todaySubtitle: 'Every small action is quietly protecting your body',
+    todayExercise: "Today's Exercise",
+    exercise: 'Exercises',
+    package: 'Packages',
+    streakTooltip: '{{days}} day streak',
+    customReminders: 'Custom Reminders',
+  },
+};
+
+// 同步初始化 i18n
+i18n.use(initReactI18next).init({
+  resources: {
+    'zh-CN': { translation: zhCN },
+    'en-US': { translation: enUS },
+  },
+  lng: 'zh-CN',
+  fallbackLng: 'zh-CN',
+  interpolation: {
+    escapeValue: false,
+  },
+  react: {
+    useSuspense: false,
+  },
+});
+
+const params = new URLSearchParams(window.location.search);
+const mode = params.get('mode');
+
+let RootComponent: React.ReactNode;
+if (mode === 'lock_slave') {
+  RootComponent = <LockScreenSlave />;
+} else if (mode === 'floating') {
+  RootComponent = <FloatingPreview />;
+} else {
+  RootComponent = <App />;
+}
+
+ReactDOM.createRoot(document.getElementById('app') as HTMLElement).render(
+  <ErrorBoundary>
+    <I18nextProvider i18n={i18n}>
+      {RootComponent}
+    </I18nextProvider>
+  </ErrorBoundary>
+);
