@@ -3,6 +3,7 @@
  */
 
 import { create } from 'zustand';
+import { format, subDays } from 'date-fns';
 import { getStorage, setStorage, STORAGE_KEYS } from '../utils/storage';
 import { DEFAULT_TASKS, DEFAULT_SETTINGS } from '../constants';
 import type { Task, AppSettings, TaskStatus, ExerciseCategory, PackageType } from '../types';
@@ -50,7 +51,7 @@ interface TodayStats {
 const TODAY_FIELDS: ReadonlySet<string> = new Set(['sitBreaks', 'waterCups', 'workMinutes', 'eyeCare', 'exercisesCompleted', 'customBreaks']);
 
 function getLocalDate(d: Date = new Date()): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return format(d, 'yyyy-MM-dd');
 }
 
 // 每日统计记录
@@ -152,7 +153,7 @@ interface HealthStore {
   incrementCategoryExercise: (category: ExerciseCategory) => void;
   incrementPackageCompleteCount: (pkgId: PackageType) => void;
   addExerciseMinutes: (minutes: number) => void;
-  updateDailyStats: () => void;
+  updateDailyStats: (dateOverride?: string) => void;
   getWeeklyStats: () => DailyStats[];
   getMonthlyStats: () => DailyStats[];
 
@@ -196,6 +197,15 @@ function initTaskStates(tasks: Task[]): Record<string, TaskState> {
     };
   });
   return states;
+}
+
+// 日期切换时先将旧日数据保存到 dailyStats，再重置
+function finalizeOldDay(get: () => HealthStore): void {
+  const state = get();
+  const today = getLocalDate();
+  if (state.todayStats.date !== '' && state.todayStats.date !== today) {
+    state.updateDailyStats(state.todayStats.date);
+  }
 }
 
 // 统一日期切换逻辑：日期变化时所有 counts 都重置为 0，避免部分重置导致数据不一致
@@ -464,6 +474,7 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
   // 统计 Actions
   // --------------------------------------------------------------------------
   incrementStat: (key) => {
+    if (TODAY_FIELDS.has(key)) finalizeOldDay(get);
     set((state) => {
       const stats = { ...state.stats, [key]: state.stats[key] + 1 };
       setStorage(STORAGE_KEYS.STATS, stats);
@@ -494,6 +505,7 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
   },
 
   incrementWorkMinutes: (minutes) => {
+    finalizeOldDay(get);
     set((state) => {
       const stats = { ...state.stats, workMinutes: state.stats.workMinutes + minutes };
       const ts = getTodayStatsForUpdate(state);
@@ -505,6 +517,7 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
   },
 
   incrementExercisesCompleted: () => {
+    finalizeOldDay(get);
     set((state) => {
       const stats = { ...state.stats, exercisesCompleted: state.stats.exercisesCompleted + 1 };
       const ts = getTodayStatsForUpdate(state);
@@ -516,6 +529,7 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
   },
 
   incrementPackagesCompleted: () => {
+    finalizeOldDay(get);
     set((state) => {
       const stats = { ...state.stats, packagesCompleted: state.stats.packagesCompleted + 1 };
       const ts = getTodayStatsForUpdate(state);
@@ -527,6 +541,7 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
   },
 
   incrementCategoryExercise: (category) => {
+    finalizeOldDay(get);
     set((state) => {
       const categoryExerciseCounts = {
         ...state.categoryExerciseCounts,
@@ -545,6 +560,7 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
   },
 
   incrementPackageCompleteCount: (pkgId) => {
+    finalizeOldDay(get);
     set((state) => {
       const packageCompleteCounts = {
         ...state.packageCompleteCounts,
@@ -563,6 +579,7 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
   },
 
   addExerciseMinutes: (minutes) => {
+    finalizeOldDay(get);
     set((state) => {
       const stats = { ...state.stats, totalExerciseMinutes: state.stats.totalExerciseMinutes + minutes };
       const ts = getTodayStatsForUpdate(state);
@@ -573,14 +590,13 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
     });
   },
 
-  updateDailyStats: () => {
-    const today = getLocalDate(); // 使用本地时区，避免凌晨时段写入错误日期
+  updateDailyStats: (dateOverride?: string) => {
+    const date = dateOverride ?? getLocalDate();
     set((state) => {
       const dailyStats = [...state.dailyStats];
-      const todayIndex = dailyStats.findIndex((d) => d.date === today);
+      const index = dailyStats.findIndex((d) => d.date === date);
 
-      // 使用 todayStats 的日增值，而非 stats 的全局累计值
-      const todayData = {
+      const data = {
         exercisesCompleted: state.todayStats.exercisesCompleted,
         packagesCompleted: state.todayStats.packagesCompleted,
         exerciseMinutes: state.todayStats.exerciseMinutes,
@@ -589,21 +605,12 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
         customBreaks: state.todayStats.customBreaks,
       };
 
-      if (todayIndex >= 0) {
-        // 更新今日数据
-        dailyStats[todayIndex] = {
-          ...dailyStats[todayIndex],
-          ...todayData,
-        };
+      if (index >= 0) {
+        dailyStats[index] = { ...dailyStats[index], date, ...data };
       } else {
-        // 添加新日期
-        dailyStats.push({
-          date: today,
-          ...todayData,
-        });
+        dailyStats.push({ date, ...data });
       }
 
-      // 只保留最近90天的数据
       const recentStats = dailyStats.slice(-90);
       setStorage(STORAGE_KEYS.DAILY_STATS, recentStats);
       return { dailyStats: recentStats };
@@ -612,19 +619,13 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
 
   getWeeklyStats: () => {
     const { dailyStats } = get();
-    const now = new Date();
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const weekAgoStr = getLocalDate(weekAgo);
-
+    const weekAgoStr = format(subDays(new Date(), 7), 'yyyy-MM-dd');
     return dailyStats.filter((d) => d.date >= weekAgoStr);
   },
 
   getMonthlyStats: () => {
     const { dailyStats } = get();
-    const now = new Date();
-    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const monthAgoStr = getLocalDate(monthAgo);
-
+    const monthAgoStr = format(subDays(new Date(), 30), 'yyyy-MM-dd');
     return dailyStats.filter((d) => d.date >= monthAgoStr);
   },
 

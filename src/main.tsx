@@ -96,6 +96,7 @@ const zhCN = {
     mergeThreshold: '合并窗口',
     advanced: '高级设置',
     taskManagement: '提醒管理',
+    taskLimitReached: '最多支持 12 个提醒，已达上限',
   },
   exercise: {
     library: '医学级运动库',
@@ -147,6 +148,8 @@ const zhCN = {
     closeToTray: '关闭到托盘',
   },
   timerCarousel: {
+    title: '我的提醒',
+    paused: '已暂停',
     empty: '暂无启用的提醒',
     pauseAll: '暂停全部',
     resumeAll: '继续全部',
@@ -297,6 +300,7 @@ const enUS = {
     mergeThreshold: 'Merge Window',
     advanced: 'Advanced Settings',
     taskManagement: 'Task Management',
+    taskLimitReached: 'Up to 12 reminders supported, limit reached',
   },
   buttons: {
     pause: 'Pause',
@@ -319,6 +323,8 @@ const enUS = {
     closeToTray: 'Close to Tray',
   },
   timerCarousel: {
+    title: 'My Reminders',
+    paused: 'Paused',
     empty: 'No active reminders',
     pauseAll: 'Pause All',
     resumeAll: 'Resume All',

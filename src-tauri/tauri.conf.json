@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "CareBuddy",
-        "width": 1276,
-        "height": 816,
+        "width": 540,
+        "height": 820,
         "resizable": false,
         "maximizable": false,
         "center": true,

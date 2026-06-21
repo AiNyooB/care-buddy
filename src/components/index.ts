@@ -1,6 +1,6 @@
 export * from './Icons';
 export * from './Sidebar';
-export * from './TimerCarousel';
+export * from './TimerCards';
 export * from './TodayStats';
 export * from './QuickActions';
 export * from './Settings';

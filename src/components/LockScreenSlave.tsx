@@ -150,7 +150,7 @@ export function LockScreenSlave() {
             {confirmed ? (
               <CheckCircle size={48} className="text-success" />
             ) : (
-              <span className="font-sans text-[2.5rem] font-bold leading-[50px] text-white">
+              <span className="font-sans text-type-lock-timer font-bold text-white">
                 {formatDuration(remaining)}
               </span>
             )}

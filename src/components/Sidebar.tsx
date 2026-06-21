@@ -22,24 +22,24 @@ export function Sidebar({ viewMode, onViewChange }: SidebarProps) {
   ];
 
   return (
-    <nav className="flex h-screen w-[var(--sidebar-width)] shrink-0 flex-col items-center bg-sidebar pt-[22px]" data-tauri-drag-region>
-      <div className="flex size-11 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-foreground shadow-sm">
+    <nav className="flex h-screen w-[var(--sidebar-width)] shrink-0 flex-col items-center bg-[#F5F5F5] pt-[19px]" data-tauri-drag-region>
+      <div className="flex size-11 items-center justify-center rounded-xl bg-[#D9D9D9] text-lg font-bold text-foreground shadow-sm">
         H
       </div>
 
-      <div className="mt-12 flex flex-col items-center gap-7">
+      <div className="mt-[32px] flex flex-col items-center gap-[32px]">
         {navItems.map(({ mode, icon: Icon, label }) => (
-          <div key={mode} className="group relative w-9 overflow-visible">
+          <div key={mode} className="group relative w-11 overflow-visible">
             <Button
               variant="ghost"
               size="icon-lg"
               data-active={viewMode === mode}
-              className="w-9 group-hover:bg-card group-hover:text-primary group-hover:shadow-sm data-[active=true]:bg-card data-[active=true]:text-primary data-[active=true]:shadow-sm"
+              className="size-11 group-hover:bg-card group-hover:text-primary group-hover:shadow-sm data-[active=true]:bg-card data-[active=true]:text-primary data-[active=true]:shadow-sm"
               onClick={() => onViewChange(mode)}
             >
               <Icon size={22} strokeWidth={1.5} />
             </Button>
-            <div className="pointer-events-none absolute left-0 top-0 z-50 hidden h-9 w-fit items-center gap-4 rounded-lg bg-card px-[10px] shadow-sm ring-0 group-hover:flex">
+            <div className="pointer-events-none absolute left-0 top-0 z-50 hidden h-11 w-fit items-center gap-4 rounded-lg bg-card px-[10px] shadow-sm ring-0 group-hover:flex">
               <Icon size={22} strokeWidth={1.5} className="shrink-0 text-primary" />
               <span className="text-nowrap text-sm text-foreground">{label}</span>
             </div>

@@ -2,6 +2,8 @@
  * 时间工具函数
  */
 
+import { format, subDays, differenceInMinutes, parse as dateParse } from 'date-fns';
+
 /**
  * 格式化时长（秒 → MM:SS 或 HH:MM:SS）
  */
@@ -41,17 +43,14 @@ export function isNearTime(targetTime: string, thresholdMinutes: number = 5): bo
  * 获取今日日期字符串 (YYYY-MM-DD)
  */
 export function getTodayDate(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+  return format(new Date(), 'yyyy-MM-dd');
 }
 
 /**
  * 获取相对日期字符串
  */
 export function getRelativeDate(daysAgo: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() - daysAgo);
-  return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+  return format(subDays(new Date(), daysAgo), 'yyyy-MM-dd');
 }
 
 /**

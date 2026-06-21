@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHealthStore } from '../store';
+import { toast } from 'sonner';
 import { setAutoStart, saveSettingsToBackend, emitSettingsUpdated, syncTasks, setIdleThreshold, updateTrayLanguage } from '../services';
 import { Shield, Sun, Moon, Monitor, Globe, Clock, Timer, GlassWater, Eye, Plus, X, Trash2, ChevronRight, Bell } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -26,6 +27,7 @@ const LOCALES = [
 ];
 
 const DEFAULT_TASK_IDS = new Set(['sit', 'water', 'eye']);
+const MAX_TASKS = 12; // 4 页 × 3 个/页
 
 function TaskIcon({ icon, size = 14 }: { icon: string; size?: number }) {
   switch (icon) {
@@ -96,6 +98,16 @@ export function Settings({ isStandalone = false }: SettingsProps) {
   const [newTaskName, setNewTaskName] = useState('');
   const [newTaskIcon, setNewTaskIcon] = useState<TaskIcon>('sit');
   const [mergeInputValue, setMergeInputValue] = useState(String(settings.mergeThreshold));
+
+  // 提醒数量达到上限时通知用户
+  const atLimit = tasks.length >= MAX_TASKS;
+  const notified = useRef(false);
+  useEffect(() => {
+    if (atLimit && !notified.current) {
+      notified.current = true;
+      toast.info(t('settings.taskLimitReached', { defaultValue: `最多支持 ${MAX_TASKS} 个提醒，已达上限` }));
+    }
+  }, [atLimit, t]);
 
   const handleLockScreenToggle = async (checked: boolean) => {
     updateSettings({ lockScreenEnabled: checked });
@@ -215,7 +227,7 @@ export function Settings({ isStandalone = false }: SettingsProps) {
             }
           }}
           onBlur={() => handleNumBlur(taskId, key, min, max, fallback, field)}
-          className="h-7 w-16 text-center text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          className="h-7 w-14 text-center text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
         />
         <span className="text-xs text-muted-foreground">{suffix}</span>
       </div>
@@ -286,7 +298,7 @@ export function Settings({ isStandalone = false }: SettingsProps) {
   };
 
   return (
-    <div className={`grid grid-cols-[412px_520px] gap-5 ${isStandalone ? 'max-w-[952px]' : ''}`}>
+    <div className="flex w-full flex-col gap-4">
       <div className="space-y-3 rounded-lg border border-border ring-0 bg-card p-4 shadow-sm">
         <h3 className="text-sm font-semibold text-foreground">{t('settings.taskManagement')}</h3>
 
@@ -319,12 +331,12 @@ export function Settings({ isStandalone = false }: SettingsProps) {
                     <CardContent className="p-3 pt-0 space-y-2 border-t border-border">
                       {!isDefault && (
                         <div className="flex items-center gap-2">
-                          <Label className="text-xs text-muted-foreground w-14 shrink-0">调度方式</Label>
+                          <Label className="text-xs text-muted-foreground w-12 shrink-0">调度方式</Label>
                           <Select
                             value={task.scheduleType}
                             onValueChange={(v) => handleScheduleTypeChange(task.id, v as ScheduleType)}
                           >
-                            <SelectTrigger className="h-7 w-28">
+                            <SelectTrigger className="h-7 w-24">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -337,19 +349,19 @@ export function Settings({ isStandalone = false }: SettingsProps) {
 
                       {task.scheduleType === 'interval' ? (
                         <div className="flex items-center gap-2">
-                          <Label className="text-xs text-muted-foreground w-14 shrink-0">间隔</Label>
+                          <Label className="text-xs text-muted-foreground w-12 shrink-0">间隔</Label>
                           {numField(task.id, 'interval', task.interval, 5, 180, 5, t('time.minutes'), 5)}
                         </div>
                       ) : (
                         <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground w-14">时间</Label>
+                          <Label className="text-xs text-muted-foreground w-12">时间</Label>
                           {task.dailyTimes.map((time, i) => (
-                            <div key={i} className="flex items-center gap-1 ml-14">
+                            <div key={i} className="flex items-center gap-1 ml-12">
                               <Input
                                 type="time"
                                 value={time}
                                 onChange={(e) => handleTimeChange(task.id, i, e.target.value)}
-                                className="h-7 w-24 text-xs"
+                                className="h-7 w-20 text-xs"
                               />
                               <button
                                 onClick={() => handleRemoveTime(task.id, i)}
@@ -363,7 +375,7 @@ export function Settings({ isStandalone = false }: SettingsProps) {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleAddTime(task.id)}
-                            className="h-6 text-xs ml-14 text-muted-foreground hover:text-foreground"
+                            className="h-6 text-xs ml-12 text-muted-foreground hover:text-foreground"
                           >
                             <Plus size={12} /> 添加时间
                           </Button>
@@ -375,12 +387,12 @@ export function Settings({ isStandalone = false }: SettingsProps) {
                         )}
 
                         <div className="flex items-center gap-2">
-                          <Label className="text-xs text-muted-foreground w-14 shrink-0">预告</Label>
+                          <Label className="text-xs text-muted-foreground w-12 shrink-0">预告</Label>
                         {numField(task.id, 'preNotificationSeconds', task.preNotificationSeconds, 0, 120, 0, '秒', 5)}
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <Label className="text-xs text-muted-foreground w-14 shrink-0">锁屏时长</Label>
+                        <Label className="text-xs text-muted-foreground w-12 shrink-0">锁屏时长</Label>
                         {numField(task.id, 'lockDuration', task.lockDuration, 10, 600, 60, '秒', 10)}
                       </div>
 
@@ -404,16 +416,18 @@ export function Settings({ isStandalone = false }: SettingsProps) {
           })}
         </div>
 
-        <div className="pt-1">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowAddForm((v) => !v)}
-            className="w-full h-8 text-xs"
-          >
-            <Plus size={14} /> 添加自定义提醒
-          </Button>
-        </div>
+        {!atLimit && (
+          <div className="pt-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAddForm((v) => !v)}
+              className="w-full h-8 text-xs"
+            >
+              <Plus size={14} /> 添加自定义提醒
+            </Button>
+          </div>
+        )}
 
         {showAddForm && (
           <div className="rounded-lg border border-border ring-0 p-3 space-y-2 bg-muted/30">
@@ -478,7 +492,7 @@ export function Settings({ isStandalone = false }: SettingsProps) {
               await updateTrayLanguage(value).catch(console.error);
             }}
           >
-            <SelectTrigger className="w-[100px]">
+            <SelectTrigger className="w-[90px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -513,7 +527,7 @@ export function Settings({ isStandalone = false }: SettingsProps) {
                 value={mergeInputValue}
                 onChange={(e) => setMergeInputValue(e.target.value)}
                 onBlur={() => handleMergeThresholdChange(parseInt(mergeInputValue, 10) || 5)}
-                className="h-7 w-16 text-center text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                className="h-7 w-14 text-center text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
               <span className="text-xs text-muted-foreground">{t('time.minutes')}</span>
             </div>
@@ -543,7 +557,7 @@ export function Settings({ isStandalone = false }: SettingsProps) {
             value={settings.theme}
             onValueChange={(value) => handleThemeSelect(value as 'light' | 'dark' | 'system')}
           >
-            <SelectTrigger className="w-[110px]">
+            <SelectTrigger className="w-[90px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -599,7 +613,7 @@ export function Settings({ isStandalone = false }: SettingsProps) {
               value={idleInputValue}
               onChange={(e) => setIdleInputValue(e.target.value)}
               onBlur={() => handleIdleThresholdChange(parseInt(idleInputValue, 10) || 5)}
-              className="h-7 w-16 text-center text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              className="h-7 w-14 text-center text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
             <span className="text-xs text-muted-foreground">{t('time.minutes')}</span>
           </div>

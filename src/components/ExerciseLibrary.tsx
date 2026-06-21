@@ -119,24 +119,25 @@ function ExerciseDetailModal({ exercise, onClose, onComplete }: ExerciseDetailMo
 function ExerciseCard({ exercise, onClick }: { exercise: Exercise; onClick: () => void }) {
   return (
     <Card
-      className="border border-border ring-0 p-6 w-[294px] cursor-pointer hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring-focus active:bg-muted/70"
+      className="border border-border ring-0 p-4 w-full cursor-pointer hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring-focus active:bg-muted/70"
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
       role="button"
       tabIndex={0}
     >
-      <CardContent className="flex flex-col gap-1.5 p-0">
-        <div className="flex items-center justify-between">
-          <div className="flex flex-col gap-1">
-            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Clock size={14} />
-              {exercise.duration}
-            </span>
-            <h4 className="text-[15px] font-medium leading-snug text-foreground">{exercise.name}</h4>
-          </div>
-          <ChevronRight size={24} className="shrink-0 text-muted-foreground" />
+      <CardContent className="flex items-center gap-3 p-0">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Play size={16} />
         </div>
-        <p className="truncate text-xs text-muted-foreground">{exercise.description}</p>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <h4 className="text-sm font-medium leading-snug text-foreground truncate">{exercise.name}</h4>
+          <p className="truncate text-xs text-muted-foreground">{exercise.description}</p>
+        </div>
+        <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+          <Clock size={12} />
+          {exercise.duration}
+        </span>
+        <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
       </CardContent>
     </Card>
   );
@@ -145,12 +146,12 @@ function ExerciseCard({ exercise, onClick }: { exercise: Exercise; onClick: () =
 function PackageCard({ pkg, onStart }: { pkg: typeof exercisePackages[0]; onStart: () => void }) {
   const { t } = useTranslation();
   return (
-    <Card className="border border-border ring-0 p-5 h-[186px]">
+    <Card className="border border-border ring-0 p-3 h-[140px]">
       <CardContent className="flex h-full flex-col p-0">
-        <div className="flex flex-1 flex-col gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-white">
-              <Dumbbell size={20} />
+        <div className="flex flex-1 flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-white">
+              <Dumbbell size={16} />
             </div>
             <div>
               <h4 className="text-sm font-semibold text-foreground">{pkg.name}</h4>
@@ -163,8 +164,8 @@ function PackageCard({ pkg, onStart }: { pkg: typeof exercisePackages[0]; onStar
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <Clock size={12} /> {pkg.recommendedFrequency}
           </span>
-          <Button variant="default" className="h-10 rounded-full" onClick={onStart}>
-            <Play size={16} />
+          <Button variant="default" className="h-8 rounded-full" onClick={onStart}>
+            <Play size={14} />
             {t('exercise.startPackage')}
           </Button>
         </div>
@@ -195,36 +196,35 @@ export function ExerciseLibrary() {
   const categoryTabLabels: Record<ExerciseCategory, string> = categoryNames;
 
   return (
-    <div className="flex h-full gap-5">
-        <aside className="flex w-[304px] shrink-0 flex-col">
-          <div className="flex flex-1 flex-col gap-[21px] overflow-y-auto">
-            {exercisePackages.map((pkg) => (
-              <PackageCard key={pkg.id} pkg={pkg} onStart={() => openExercisePanel(pkg.id)} />
-            ))}
-          </div>
-        </aside>
+    <div className="flex h-full flex-col gap-4">
+      {/* 运动套餐区域 - 2列网格 */}
+      <div className="grid grid-cols-2 gap-3">
+        {exercisePackages.map((pkg) => (
+          <PackageCard key={pkg.id} pkg={pkg} onStart={() => openExercisePanel(pkg.id)} />
+        ))}
+      </div>
 
-        <main className="flex min-w-0 flex-1 flex-col">
-          <Tabs value={selectedCategory} onValueChange={(v) => setSelectedCategory(v as ExerciseCategory)} className="mb-5">
-            <TabsList variant="line" className="gap-6">
-              {CATEGORIES.map((cat) => (
-                <TabsTrigger key={cat} value={cat} className="border-0">
-                  {categoryTabLabels[cat]}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+      {/* 分类标签 */}
+      <Tabs value={selectedCategory} onValueChange={(v) => setSelectedCategory(v as ExerciseCategory)} className="mb-2">
+        <TabsList variant="line" className="gap-4">
+          {CATEGORIES.map((cat) => (
+            <TabsTrigger key={cat} value={cat} className="border-0">
+              {categoryTabLabels[cat]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
-          <div className="flex flex-1 flex-wrap gap-5 content-start overflow-y-auto">
-            {filteredExercises.map((exercise) => (
-              <ExerciseCard
-                key={exercise.id}
-                exercise={exercise}
-                onClick={() => setSelectedExercise(exercise)}
-              />
-            ))}
-          </div>
-        </main>
+      {/* 运动列表 - 单列 */}
+      <div className="flex flex-1 flex-col gap-3 overflow-y-auto">
+        {filteredExercises.map((exercise) => (
+          <ExerciseCard
+            key={exercise.id}
+            exercise={exercise}
+            onClick={() => setSelectedExercise(exercise)}
+          />
+        ))}
+      </div>
 
       {selectedExercise && (
         <ExerciseDetailModal

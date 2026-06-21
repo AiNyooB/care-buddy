@@ -8,7 +8,7 @@ import { emit } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import {
   Sidebar,
-  TimerCarousel,
+  TimerCards,
   TodayStats,
   Settings,
   ExercisePanel,
@@ -18,6 +18,8 @@ import {
 } from './components';
 import type { ViewMode } from './components/Sidebar';
 import { useHealthStore } from './store';
+import { getTodayDate } from './utils/time';
+import { Toaster } from '@/components/ui/sonner';
 import {
   onCountdownUpdate,
   onLockScreenOpen,
@@ -36,6 +38,7 @@ import {
   timerResetAll,
   timerResetTask,
   showFloatingWindow,
+  showNotification,
   hideFloatingWindow,
   getCountdowns,
   listen,
@@ -77,8 +80,15 @@ function App() {
     );
   };
 
-  // 初始化：同步任务到后端 + 加载初始状态
+  // 初始化：验证日期 + 同步任务到后端 + 加载初始状态
   useEffect(() => {
+    // 验证 todayStats 日期，跨天时保存旧数据并重置
+    const s = useHealthStore.getState();
+    const today = getTodayDate();
+    if (s.todayStats.date !== '' && s.todayStats.date !== today) {
+      s.updateDailyStats(s.todayStats.date);
+    }
+
     const init = async () => {
       // 同步任务到后端
       await syncTasks(tasks).catch(console.warn);
@@ -106,6 +116,18 @@ function App() {
       }
     }, 60000);
     return () => clearInterval(interval);
+  }, []);
+
+  // 每 5 分钟将今日统计同步到历史记录（锁屏未启用时也需要记录）
+  useEffect(() => {
+    const interval = setInterval(() => {
+      useHealthStore.getState().updateDailyStats();
+    }, 5 * 60 * 1000);
+    return () => {
+      clearInterval(interval);
+      // 组件卸载前保存一次
+      useHealthStore.getState().updateDailyStats();
+    };
   }, []);
 
   // 订阅后端事件
@@ -184,11 +206,24 @@ function App() {
         const currentState = useHealthStore.getState();
         const latestSettings = currentState.settings;
         if (!latestSettings.lockScreenEnabled) {
-          // lockScreenEnabled 关闭时直接重置任务，无需延迟
-          // timer.triggered = true 已阻止重复触发
+          const store = useHealthStore.getState();
+          const allIds = [taskId, ...mergedIds];
+          for (const id of allIds) {
+            const task = store.tasks.find((t) => t.id === id);
+            if (!task) continue;
+            if (task.id === 'sit') store.incrementSitBreaks();
+            else if (task.id === 'water') store.incrementWaterCups();
+            else if (task.id === 'eye') store.incrementEyeCare();
+            else store.incrementCustomBreaks();
+          }
           timerResetTask(taskId).catch(console.warn);
           for (const id of mergedIds) {
             timerResetTask(id).catch(console.warn);
+          }
+          const firstTask = store.tasks.find((t) => t.id === taskId);
+          if (firstTask) {
+            showNotification(firstTask.title, firstTask.desc || '').catch(console.warn);
+            playNotificationSound(taskId).catch(console.warn);
           }
           return;
         }
@@ -313,18 +348,18 @@ function App() {
 
       <div className="flex flex-1 flex-col">
         <header
-          className="flex h-[var(--titlebar-height)] shrink-0 items-center justify-between bg-background pl-[var(--grid-col)] pr-[var(--grid-col)]"
+          className="flex h-[var(--titlebar-height)] shrink-0 items-center justify-between bg-background px-4"
           data-tauri-drag-region
         >
-          <div className="flex flex-col pl-5">
-            <span className="text-sm font-semibold text-foreground leading-tight">
+          <div className="flex flex-col">
+            <span className="text-base font-bold text-foreground leading-tight">
               {viewMode === 'main' ? t('app.mainTitle') :
                viewMode === 'exercise' ? t('app.exerciseTitle') :
                viewMode === 'stats' ? t('app.statsTitle') :
                t('settings.title')}
             </span>
             {viewMode !== 'settings' && (
-              <span className="mt-0.5 text-[11px] text-muted-foreground leading-tight">
+              <span className="mt-1 text-xs text-muted-foreground leading-tight">
                 {viewMode === 'main' ? t('app.mainSubtitle') :
                  viewMode === 'exercise' ? t('app.exerciseSubtitle') :
                  t('app.statsSubtitle')}
@@ -334,29 +369,21 @@ function App() {
           <WindowControls />
         </header>
 
-        <main className="flex flex-1">
-          <div className="w-[var(--grid-col)] shrink-0" data-tauri-drag-region />
-
-          <div className="flex flex-1 flex-col">
-            <div className="flex flex-1 p-[var(--content-padding)]">
-              {viewMode === 'main' && (
-                <div className="grid h-full w-full grid-cols-[520px_1fr] gap-5">
-                  <TimerCarousel />
-                  <TodayStats />
-                </div>
-              )}
-              {viewMode === 'exercise' && <ExerciseLibrary />}
-              {viewMode === 'stats' && <StatsDashboard />}
-              {viewMode === 'settings' && <Settings isStandalone />}
+        <main className="flex-1 overflow-x-clip overflow-y-auto px-4 pb-4">
+          {viewMode === 'main' && (
+            <div className="mx-auto flex w-[var(--card-area)] flex-col">
+              <TimerCards />
+              <TodayStats />
             </div>
-            <div className="h-[var(--grid-col)] shrink-0" data-tauri-drag-region />
-          </div>
-
-          <div className="w-[var(--grid-col)] shrink-0" data-tauri-drag-region />
+          )}
+          {viewMode === 'exercise' && <ExerciseLibrary />}
+          {viewMode === 'stats' && <StatsDashboard />}
+          {viewMode === 'settings' && <Settings isStandalone />}
         </main>
       </div>
 
       {exercisePanel.active && <ExercisePanel />}
+      <Toaster />
     </div>
   );
 }

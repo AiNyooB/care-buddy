@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
+import { format, subDays } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { useHealthStore } from '../store';
-import { PersonStanding, GlassWater, Eye, Clock, Activity } from 'lucide-react';
+import { PersonStanding, GlassWater, Eye, MonitorCheck, Activity } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { CATEGORY_CONFIG } from '../constants';
 import type { ExerciseCategory, PackageType } from '../types';
 
@@ -14,11 +16,8 @@ const PACKAGES: PackageType[] = ['package-quick', 'package-standard', 'package-d
 
 function computeStreak(dailyStats: { date: string; exercisesCompleted: number; sitBreaks: number; waterCups: number; customBreaks: number }[]): number {
   let streak = 0;
-  const today = new Date();
   for (let i = 0; i < 365; i++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().split('T')[0];
+    const dateStr = format(subDays(new Date(), i), 'yyyy-MM-dd');
     const day = dailyStats.find((s) => s.date === dateStr);
     if (day && (day.sitBreaks > 0 || day.waterCups > 0 || day.exercisesCompleted > 0 || day.customBreaks > 0)) {
       streak++;
@@ -52,22 +51,29 @@ export function TodayStats() {
   }, [chartMode, todayStats, t]);
 
   const statCards = [
-    { icon: <Clock size={16} />, label: t('statCards.workMinutes'), value: `${todayStats.workMinutes}${t('time.minutes')}` },
-    { icon: <Eye size={16} />, label: t('statCards.eyeCare'), value: `${todayStats.eyeCare}${t('statCards.exercise')}` },
-    { icon: <PersonStanding size={16} />, label: t('statCards.sitReminder'), value: `${todayStats.sitBreaks}${t('statCards.exercise')}` },
-    { icon: <GlassWater size={16} />, label: t('statCards.waterReminder'), value: `${todayStats.waterCups}${t('statCards.exercise')}` },
+    { icon: <MonitorCheck size={24} />, label: t('statCards.workMinutes'), value: `${todayStats.workMinutes}${t('time.minutes')}` },
+    { icon: <Eye size={24} />, label: t('statCards.eyeCare'), value: `${todayStats.eyeCare}${t('statCards.exercise')}` },
+    { icon: <PersonStanding size={24} />, label: t('statCards.sitReminder'), value: `${todayStats.sitBreaks}${t('statCards.exercise')}` },
+    { icon: <GlassWater size={24} />, label: t('statCards.waterReminder'), value: `${todayStats.waterCups}${t('statCards.exercise')}` },
   ];
 
+  const chartConfig = {
+    count: {
+      label: t('statCards.todayExercise'),
+      color: 'var(--primary)',
+    },
+  } satisfies ChartConfig;
+
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex items-start justify-between">
+    <div className="flex flex-col pt-4">
+      <div className="flex items-start justify-between mb-3">
         <div className="flex flex-col gap-0">
-          <h2 className="text-lg font-bold leading-8 text-foreground">{t('statCards.todayStats')}</h2>
-          <span className="text-xs leading-[18px] text-muted-foreground">{t('statCards.todaySubtitle')}</span>
+          <h2 className="text-type-page-title font-bold text-foreground">{t('statCards.todayStats')}</h2>
+          <span className="text-type-caption text-muted-foreground">{t('statCards.todaySubtitle')}</span>
         </div>
         {streak > 0 && (
           <Tooltip>
-            <TooltipTrigger className="mt-1 flex h-6 cursor-pointer items-center rounded-full bg-muted px-3 text-sm font-semibold text-foreground">
+            <TooltipTrigger className="mt-2 flex h-6 cursor-pointer items-center rounded-full bg-primary/10 px-3 text-sm font-semibold text-primary">
               {streak}
             </TooltipTrigger>
             <TooltipContent side="left">
@@ -77,15 +83,15 @@ export function TodayStats() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-5">
+      <div className="grid grid-cols-2 gap-4 mb-4">
         {statCards.map((card, i) => (
-          <Card key={i} className="flex items-center justify-between p-4 shadow-sm">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-muted text-foreground">
+          <Card key={i} className="flex flex-row h-[70px] w-[208px] items-center justify-between rounded-[14px] border border-border p-3 ring-0">
+            <div className="flex size-8 items-center justify-center rounded-[8px] text-primary" style={{ backgroundColor: '#DBEAFE' }}>
               {card.icon}
             </div>
             <div className="text-right">
-              <div className="text-sm font-semibold text-foreground">{card.value}</div>
-              <div className="text-xs text-muted-foreground">
+              <div className="text-type-card-title font-semibold text-foreground">{card.value}</div>
+              <div className="text-type-body text-muted-foreground">
                 {card.label}
               </div>
             </div>
@@ -93,8 +99,8 @@ export function TodayStats() {
         ))}
       </div>
 
-      <Card className="flex flex-col p-5 shadow-sm">
-        <div className="mb-4 flex items-center gap-2">
+      <Card className="!gap-0 rounded-[14px] border border-border p-3 ring-0">
+        <div className="mb-3 flex items-center gap-2">
           <div className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary">
             <Activity size={14} />
           </div>
@@ -118,24 +124,15 @@ export function TodayStats() {
             </Toggle>
           </div>
         </div>
-        <div className="h-[200px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} allowDecimals={false} />
-              <RechartsTooltip
-                contentStyle={{
-                  background: 'var(--card)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 8,
-                  fontSize: 12,
-                }}
-              />
-              <Bar dataKey="count" fill="var(--primary)" radius={[4, 4, 0, 0]} barSize={24} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <ChartContainer config={chartConfig} className="!aspect-auto h-[128px] w-full">
+          <BarChart data={chartData} margin={{ top: 8, right: 0, left: 0, bottom: -6 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+            <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
+            <YAxis width={20} tick={{ fontSize: 11, fill: 'var(--muted-foreground)', textAnchor: 'middle' }} axisLine={false} tickLine={false} allowDecimals={false} />
+            <ChartTooltip content={<ChartTooltipContent />} />
+            <Bar dataKey="count" fill="var(--color-count)" radius={[4, 4, 0, 0]} barSize={24} />
+          </BarChart>
+        </ChartContainer>
       </Card>
     </div>
   );

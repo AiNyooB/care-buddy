@@ -3,6 +3,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { format, subDays } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import {
   LineChart,
@@ -30,12 +31,11 @@ export function StatsDashboard() {
   const weeklyData = useMemo(() => {
     const days = [];
     for (let i = 6; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
-      const dayName = ['日', '一', '二', '三', '四', '五', '六'][date.getDay()];
+      const d = subDays(new Date(), i);
+      const dateStr = format(d, 'yyyy-MM-dd');
+      const dayName = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
       
-      const dayData = dailyStats.find((d) => d.date === dateStr);
+      const dayData = dailyStats.find((s) => s.date === dateStr);
       days.push({
         date: dayName,
         dateFull: dateStr,
@@ -53,12 +53,11 @@ export function StatsDashboard() {
   const monthlyData = useMemo(() => {
     const days = [];
     for (let i = 29; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
-      const dayNum = date.getDate();
+      const d = subDays(new Date(), i);
+      const dateStr = format(d, 'yyyy-MM-dd');
+      const dayNum = d.getDate();
       
-      const dayData = dailyStats.find((d) => d.date === dateStr);
+      const dayData = dailyStats.find((s) => s.date === dateStr);
       days.push({
         date: `${dayNum}${t('stats.day')}`,
         dateFull: dateStr,
@@ -90,7 +89,7 @@ export function StatsDashboard() {
   }, [dailyStats]);
 
   return (
-    <div className="w-full space-y-5">
+    <div className="flex w-full flex-col gap-4">
       {/* 总计卡片 */}
       <Card>
         <CardHeader>
@@ -126,86 +125,83 @@ export function StatsDashboard() {
         </CardContent>
       </Card>
 
-      {/* 本周数据 + 本月数据 左右并排 */}
-      <div className="grid grid-cols-2 gap-5">
-        {/* 本周数据 */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                <Target size={16} />
-                {t('stats.weeklyData')}
-              </CardTitle>
-              <div className="flex gap-1">
-                <Toggle
-                  size="sm"
-                  pressed={dashboardMode === 'trend'}
-                  onPressedChange={() => setDashboardMode('trend')}
-                  className="rounded-full px-3"
-                >
-                  {t('stats.weeklyTrend')}
-                </Toggle>
-                <Toggle
-                  size="sm"
-                  pressed={dashboardMode === 'habits'}
-                  onPressedChange={() => setDashboardMode('habits')}
-                  className="rounded-full px-3"
-                >
-                  {t('stats.weeklyHabits')}
-                </Toggle>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="px-0 pt-4">
-            {dashboardMode === 'trend' ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={weeklyData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="date" tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
-                  <YAxis tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
-                  <Tooltip contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px' }} />
-                  <Legend />
-                  <Line type="monotone" dataKey="exercises" name={t('stats.exercisesCompleted')} stroke="var(--chart-1)" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                  <Line type="monotone" dataKey="packages" name={t('stats.packagesCompleted')} stroke="var(--chart-2)" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={weeklyData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="date" tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
-                  <YAxis tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
-                  <Tooltip contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px' }} />
-                  <Legend />
-                  <Bar dataKey="sitBreaks" name={t('stats.sitBreaks')} fill="var(--chart-5)" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="waterCups" name={t('stats.waterCups')} fill="var(--chart-3)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 本月运动时长 */}
-        <Card>
-          <CardHeader>
+      {/* 本周数据 */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-              <Clock size={16} />
-              {t('stats.monthlyMinutes')}
+              <Target size={16} />
+              {t('stats.weeklyData')}
             </CardTitle>
-          </CardHeader>
-          <CardContent>
+            <div className="flex gap-1">
+              <Toggle
+                size="sm"
+                pressed={dashboardMode === 'trend'}
+                onPressedChange={() => setDashboardMode('trend')}
+                className="rounded-full px-3"
+              >
+                {t('stats.weeklyTrend')}
+              </Toggle>
+              <Toggle
+                size="sm"
+                pressed={dashboardMode === 'habits'}
+                onPressedChange={() => setDashboardMode('habits')}
+                className="rounded-full px-3"
+              >
+                {t('stats.weeklyHabits')}
+              </Toggle>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="px-0 pt-4">
+          {dashboardMode === 'trend' ? (
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={monthlyData}>
+              <LineChart data={weeklyData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="date" tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }} />
+                <XAxis dataKey="date" tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
                 <YAxis tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
                 <Tooltip contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px' }} />
-                <Bar dataKey="minutes" name={t('stats.totalExerciseMinutes')} fill="var(--chart-4)" radius={[4, 4, 0, 0]} />
+                <Legend />
+                <Line type="monotone" dataKey="exercises" name={t('stats.exercisesCompleted')} stroke="var(--chart-1)" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="packages" name={t('stats.packagesCompleted')} stroke="var(--chart-2)" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={weeklyData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="date" tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
+                <YAxis tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
+                <Tooltip contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px' }} />
+                <Legend />
+                <Bar dataKey="sitBreaks" name={t('stats.sitBreaks')} fill="var(--chart-5)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="waterCups" name={t('stats.waterCups')} fill="var(--chart-3)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 本月运动时长 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+            <Clock size={16} />
+            {t('stats.monthlyMinutes')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={monthlyData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="date" tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }} />
+              <YAxis tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
+              <Tooltip contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px' }} />
+              <Bar dataKey="minutes" name={t('stats.totalExerciseMinutes')} fill="var(--chart-4)" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
     </div>
   );
 }
