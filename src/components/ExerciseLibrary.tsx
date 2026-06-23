@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHealthStore } from '../store';
-import { exercises, exercisePackages, categoryNames, priorityLabels } from '../data/exercises';
+import { exercises, categoryNames, priorityLabels } from '../data/exercises';
 import { guidedExerciseConfigs } from '../data/guided-configs';
 import type { Exercise, ExerciseCategory } from '../types';
-import { Play, Clock, Target, CheckCircle, ChevronRight, Dumbbell, Headphones } from './Icons';
+import { Play, Clock, Target, CheckCircle, ChevronRight, Headphones } from './Icons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -17,6 +17,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { primeSpeech } from '../services/voice';
+import { PackageHero } from './PackageHero';
 
 const CATEGORIES: ExerciseCategory[] = ['spine', 'circulation', 'metabolism', 'vision', 'wrist'];
 
@@ -117,58 +118,38 @@ function ExerciseDetailModal({ exercise, onClose, onComplete }: ExerciseDetailMo
 }
 
 function ExerciseCard({ exercise, onClick }: { exercise: Exercise; onClick: () => void }) {
+  const priority = priorityLabels[exercise.priority];
   return (
     <Card
-      className="border border-border ring-0 p-4 w-full cursor-pointer hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring-focus active:bg-muted/70"
+      className="cursor-pointer border border-border ring-0 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring active:bg-muted/50"
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
       role="button"
       tabIndex={0}
     >
-      <CardContent className="flex items-center gap-3 p-0">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Play size={16} />
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <h4 className="text-sm font-medium leading-snug text-foreground truncate">{exercise.name}</h4>
-          <p className="truncate text-xs text-muted-foreground">{exercise.description}</p>
-        </div>
-        <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-          <Clock size={12} />
-          {exercise.duration}
-        </span>
-        <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
-      </CardContent>
-    </Card>
-  );
-}
-
-function PackageCard({ pkg, onStart }: { pkg: typeof exercisePackages[0]; onStart: () => void }) {
-  const { t } = useTranslation();
-  return (
-    <Card className="border border-border ring-0 p-3 h-[140px]">
-      <CardContent className="flex h-full flex-col p-0">
-        <div className="flex flex-1 flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-white">
-              <Dumbbell size={16} />
-            </div>
-            <div>
-              <h4 className="text-sm font-semibold text-foreground">{pkg.name}</h4>
-              <span className="text-[0.6875rem] text-primary">{pkg.duration}{t('time.minutes')} · {pkg.exercises.length}{t('exercise.repetitions')}</span>
-            </div>
+      <CardContent className="flex flex-col gap-0 p-2">
+        {/* 顶行：标题 + 优先级标签 */}
+        <div className="flex items-start justify-between">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <h4 className="truncate text-sm font-semibold leading-snug text-foreground">
+              {exercise.name}
+            </h4>
+            <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+              <Clock size={12} />
+              {exercise.duration}
+            </span>
           </div>
-          <p className="line-clamp-2 text-xs text-muted-foreground">{pkg.description}</p>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Clock size={12} /> {pkg.recommendedFrequency}
+          <span
+            className="ml-2 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium leading-none text-white"
+            style={{ backgroundColor: priority.color }}
+          >
+            {priority.label}
           </span>
-          <Button variant="default" className="h-8 rounded-full" onClick={onStart}>
-            <Play size={14} />
-            {t('exercise.startPackage')}
-          </Button>
         </div>
+        {/* 描述 — 单行 */}
+        <p className="mt-1 line-clamp-1 text-sm leading-5 text-muted-foreground">
+          {exercise.description}
+        </p>
       </CardContent>
     </Card>
   );
@@ -197,12 +178,8 @@ export function ExerciseLibrary() {
 
   return (
     <div className="flex h-full flex-col gap-4">
-      {/* 运动套餐区域 - 2列网格 */}
-      <div className="grid grid-cols-2 gap-3">
-        {exercisePackages.map((pkg) => (
-          <PackageCard key={pkg.id} pkg={pkg} onStart={() => openExercisePanel(pkg.id)} />
-        ))}
-      </div>
+      {/* 套餐 Hero — 替换旧的 PackageCard 网格 */}
+      <PackageHero />
 
       {/* 分类标签 */}
       <Tabs value={selectedCategory} onValueChange={(v) => setSelectedCategory(v as ExerciseCategory)} className="mb-2">
@@ -215,8 +192,8 @@ export function ExerciseLibrary() {
         </TabsList>
       </Tabs>
 
-      {/* 运动列表 - 单列 */}
-      <div className="flex flex-1 flex-col gap-3 overflow-y-auto">
+      {/* 运动卡片 — 2 列网格 */}
+      <div className="grid grid-cols-2 gap-3">
         {filteredExercises.map((exercise) => (
           <ExerciseCard
             key={exercise.id}
