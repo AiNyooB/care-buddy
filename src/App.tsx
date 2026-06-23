@@ -34,6 +34,7 @@ export default function App() {
   const { t } = useTranslation();
   const [viewMode, setViewMode] = useState<ViewMode>('main');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<string>('reminders');
 
   const tasks = useHealthStore((s) => s.tasks);
   const exercisePanel = useHealthStore((s) => s.exercisePanel);
@@ -109,7 +110,10 @@ export default function App() {
           </TabsList>
         </Tabs>
 
-        <WindowControls onOpenSettings={() => setSettingsOpen(true)} />
+        <WindowControls onOpenSettings={(initialTab) => {
+          if (initialTab) setSettingsInitialTab(initialTab);
+          setSettingsOpen(true);
+        }} />
       </header>
 
       {/* 内容区 */}
@@ -128,7 +132,7 @@ export default function App() {
             {t('settings.title')}
           </SheetHeader>
           <div className="flex-1 overflow-y-auto">
-            <Settings />
+            <Settings key={settingsInitialTab} initialTab={settingsInitialTab} />
           </div>
         </SheetContent>
       </Sheet>

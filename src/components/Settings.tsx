@@ -666,13 +666,14 @@ export function AdvancedSection() {
 
 interface SettingsProps {
   isStandalone?: boolean;
+  initialTab?: string;
 }
 
-export function Settings({ isStandalone = false }: SettingsProps) {
+export function Settings({ isStandalone = false, initialTab }: SettingsProps) {
   const { t } = useTranslation();
 
   return (
-    <Tabs defaultValue="reminders" className="flex flex-col">
+    <Tabs defaultValue={initialTab || 'reminders'} className="flex flex-col">
       <div className="sticky top-0 z-10 bg-card px-4 pt-3 pb-0">
         <TabsList variant="line" className="w-full">
           <TabsTrigger value="reminders" className="flex-1 text-xs">
