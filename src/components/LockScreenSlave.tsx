@@ -49,11 +49,11 @@ export function LockScreenSlave() {
 
   const progress = duration > 0 ? (duration - remaining) / duration : 0;
 
-  const handleComplete = useCallback(async () => {
+  const handleComplete = useCallback(async (playSound = true) => {
     if (completionHandledRef.current) return;
     completionHandledRef.current = true;
     setConfirmed(true);
-    playCompleteSound();
+    if (playSound) playCompleteSound();
     try {
       await emit('lock-screen-completed', { completed: true });
     } catch (e) {
@@ -122,10 +122,10 @@ export function LockScreenSlave() {
     return () => clearInterval(timer);
   }, [confirmed]);
 
-  // autoUnlock：remaining 到 0 时自动完成
+  // autoUnlock：remaining 到 0 时自动完成（静默，不播音效）
   useEffect(() => {
     if (remaining === 0 && autoUnlock && !confirmed) {
-      handleComplete();
+      handleComplete(false);
     }
   }, [remaining, autoUnlock, confirmed, handleComplete]);
 
@@ -167,7 +167,7 @@ export function LockScreenSlave() {
             </Button>
           ) : (
             <>
-              <Button onClick={handleComplete}>
+              <Button onClick={() => handleComplete()}>
                 <CheckCircle size={20} />
               </Button>
 

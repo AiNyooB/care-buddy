@@ -83,6 +83,28 @@ export function playWarningSound(): void {
 }
 
 /**
+ * 播放节拍音（清脆高音，用于快速动作节奏提示）
+ */
+export function playBeatSound(high = true, volume = 0.2): void {
+  playTone(high ? 1200 : 900, 60, 'triangle', volume);
+}
+
+/**
+ * 播放过渡音（轻柔双音，用于step切换预告）
+ */
+export function playTransitionSound(): void {
+  playTone(660, 80, 'sine', 0.15);
+  setTimeout(() => playTone(880, 80, 'sine', 0.15), 80);
+}
+
+/**
+ * 播放轮次提示音（中音，用于"第X组"提示）
+ */
+export function playRoundSound(): void {
+  playTone(523, 200, 'sine', 0.2);
+}
+
+/**
  * 播放取消音
  */
 export function playCancelSound(): void {
