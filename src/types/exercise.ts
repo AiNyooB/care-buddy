@@ -14,13 +14,17 @@ export interface GuidedStep {
   text: string;           // TTS 播报文本（如 "闭合双眼"）
   instruction: string;    // UI 显示指引（如 "轻轻闭合双眼，保持2秒"）
   duration: number;       // 本步持续秒数（>= 1）
+  beat?: boolean;         // true=本步使用节拍音提示（替代TTS，用于快速动作）
+  transitionDuration?: number; // 本步结束后的过渡时间（秒），默认0.5s
 }
 
 /** 引导锻炼配置 */
 export interface GuidedConfig {
   cycle: GuidedStep[];    // 一个重复周期内的步骤序列
   repetitions: number;    // 周期重复次数
-  prepCountdown?: number; // 每步开始前倒计时秒数（默认 3）
+  prepCountdown?: number; // 开始前倒计时秒数（默认 3）
+  beatMode?: boolean;     // true=全程节拍模式（所有step自动beat=true），用于快速动态动作
+  transitionDuration?: number;  // 全局过渡时间（秒），默认0.5；step级可覆盖
 }
 
 // ============================================================================

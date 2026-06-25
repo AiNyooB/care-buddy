@@ -89,13 +89,19 @@ export interface GuidedStep {
   text: string;
   instruction: string;
   duration: number;
+  beat?: boolean;
+  transitionDuration?: number;
 }
 
 export interface GuidedConfig {
   cycle: GuidedStep[];
   repetitions: number;
   prepCountdown?: number;
+  beatMode?: boolean;
+  transitionDuration?: number;
 }
+
+export type GuidedStatus = 'idle' | 'prep' | 'transition' | 'active' | 'roundComplete' | 'done';
 
 // 运动套餐
 export interface ExercisePackage {

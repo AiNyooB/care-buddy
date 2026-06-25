@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHealthStore } from '../store';
-import { playCompleteSound } from '../utils/audio';
 import { CheckCircle, XCircle, ChevronRight, Dumbbell, Volume2, VolumeX } from './Icons';
 import { Button } from '@/components/ui/button';
 import { exercises, exercisePackages } from '../data/exercises';
@@ -11,7 +10,8 @@ import type { Exercise, GuidedConfig } from '../types';
 import type { GuidedExerciseState } from '../hooks/useGuidedExercise';
 
 // ============================================================================
-// GuidedExerciseContent — 纯内容渲染，无 overlay/按钮
+// GuidedExerciseContent — 固定骨架 + 动态内容区
+// 结构：Header(固定) → ProgressBar(固定) → CenterContent(动态,固定最小高度) → Footer(固定)
 // ============================================================================
 
 interface GuidedExerciseContentProps {
@@ -21,13 +21,25 @@ interface GuidedExerciseContentProps {
   showProgress?: boolean;
   currentIndex?: number;
   totalExercises?: number;
+  onExit?: () => void;
 }
 
-function GuidedExerciseContent({ exercise, guidedState, guidedConfig, showProgress, currentIndex, totalExercises }: GuidedExerciseContentProps) {
+function GuidedExerciseContent({ exercise, guidedState, guidedConfig, showProgress, currentIndex, totalExercises, onExit }: GuidedExerciseContentProps) {
   const { t } = useTranslation();
-  const remaining = guidedState.stepRemaining ?? 0;
 
-  if (guidedState.status === 'prep') {
+  const totalSteps = guidedConfig.cycle.length * guidedConfig.repetitions;
+  const currentStepGlobal = (guidedState.currentRepetition - 1) * guidedConfig.cycle.length + guidedState.currentCycleStep;
+  const progress = Math.min(100, (currentStepGlobal / totalSteps) * 100);
+
+  const isPrep = guidedState.status === 'prep';
+  const isDone = guidedState.status === 'done';
+  const isExercise = guidedState.status === 'active' || guidedState.status === 'transition' || guidedState.status === 'roundComplete';
+  const showExit = isExercise;
+  const showHeader = isExercise;
+  const showProgressBar = isExercise;
+
+  // ── prep ──
+  if (isPrep) {
     return (
       <div className="text-center animate-[lockScaleIn_0.35s_ease]">
         <div className="text-2xl font-semibold text-white mb-2">{exercise.name}</div>
@@ -39,43 +51,8 @@ function GuidedExerciseContent({ exercise, guidedState, guidedConfig, showProgre
     );
   }
 
-  if (guidedState.status === 'active') {
-    return (
-      <div className="text-center animate-[lockScaleIn_0.35s_ease]">
-        <div className="flex items-center gap-3 mb-4 text-white">
-          <Dumbbell size={20} />
-          <span className="text-xl font-semibold flex-1 min-w-0">{exercise.name}</span>
-          {guidedConfig.repetitions > 1 && (
-            <span className="text-white/60 text-sm tabular-nums">
-              {t('guided.remainingCycles', { count: guidedConfig.repetitions - guidedState.currentRepetition })}
-            </span>
-          )}
-          {showProgress && (
-            <span className="text-base font-semibold text-white/80">
-              {(currentIndex ?? 0) + 1} / {totalExercises}
-            </span>
-          )}
-        </div>
-
-        <div className="h-1 bg-white/20 rounded-sm mb-8 overflow-hidden">
-          <div
-            className="h-full rounded-sm transition-all duration-300 bg-gradient-to-r from-success to-success/80"
-            style={{ width: `${Math.min(100, ((guidedState.currentRepetition - 1) * guidedConfig.cycle.length + (guidedState.currentCycleStep + 1)) / (guidedConfig.cycle.length * guidedConfig.repetitions) * 100)}%` }}
-          />
-        </div>
-
-        <div className="text-white/80 text-lg mb-2">{guidedState.currentStep?.text ?? ''}</div>
-        <div className="text-white/50 text-sm mb-8 max-w-[360px] mx-auto">{guidedState.currentStep?.instruction ?? ''}</div>
-
-        <div className="mx-auto mb-6">
-          <div className="text-[4rem] font-bold text-white leading-none">{remaining}</div>
-          <div className="text-white/40 text-sm mt-2">{t('guided.secondsRemaining')}</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (guidedState.status === 'done') {
+  // ── done ──
+  if (isDone) {
     return (
       <div className="text-center animate-[lockScaleIn_0.35s_ease]">
         <div className="flex items-center justify-center mb-6">
@@ -87,7 +64,89 @@ function GuidedExerciseContent({ exercise, guidedState, guidedConfig, showProgre
     );
   }
 
-  return null;
+  // ── active / transition / roundComplete：固定骨架 ──
+  const step = guidedState.currentStep;
+  const isBeat = guidedState.isBeatMode;
+  const isActive = guidedState.status === 'active';
+  const isTransition = guidedState.status === 'transition';
+  const isRoundComplete = guidedState.status === 'roundComplete';
+
+  const stepProgress = step && isActive ? 1 - (guidedState.stepRemaining / step.duration) : 0;
+  const displayNumber = isActive ? guidedState.stepRemaining : 0;
+
+  return (
+    <div className="w-full">
+      {/* Header - 固定 */}
+      <div className="flex items-center gap-3 mb-3 text-white flex-shrink-0">
+        <Dumbbell size={20} />
+        <span className="text-xl font-semibold flex-1 min-w-0 truncate">{exercise.name}</span>
+        {guidedConfig.repetitions > 1 && (
+          <span className="text-white/60 text-sm tabular-nums">
+            {t('guided.remainingCycles', { count: Math.max(0, guidedConfig.repetitions - guidedState.currentRepetition) })}
+          </span>
+        )}
+        {showProgress && (
+          <span className="text-base font-semibold text-white/80">
+            {(currentIndex ?? 0) + 1} / {totalExercises}
+          </span>
+        )}
+      </div>
+
+      {/* ProgressBar - 固定 */}
+      <div className="h-1 bg-white/20 rounded-sm mb-4 overflow-hidden flex-shrink-0">
+        <div
+          className="h-full rounded-sm transition-all duration-300 bg-gradient-to-r from-success to-success/80"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+
+      {/* Center Content - 固定最小高度，内容切换 */}
+      <div className="h-[260px] flex flex-col items-center justify-center text-center py-4 overflow-y-auto">
+        {isRoundComplete ? (
+          <div className="transition-opacity duration-200">
+            <div className="text-3xl font-bold text-success mb-2">
+              第 {guidedState.currentRepetition} 组
+            </div>
+            <div className="text-white/60 text-base">{t('guided.prep')}</div>
+          </div>
+        ) : isTransition ? null : isActive ? (
+          <div className="transition-opacity duration-200">
+            <div className="text-white/80 text-lg mb-2">{step?.text ?? ''}</div>
+            <div className="text-white/50 text-sm mb-5 max-w-[360px] mx-auto">{step?.instruction ?? ''}</div>
+
+            {isBeat ? (
+              <div className="mx-auto mb-2">
+                <span className="text-[4rem] font-bold text-white leading-none tabular-nums inline-block">{displayNumber}</span>
+                <div className="text-white/40 text-sm mt-1">{t('guided.secondsRemaining')}</div>
+              </div>
+            ) : (
+              <div className="mx-auto mb-2">
+                <span className="text-[4rem] font-bold text-white leading-none tabular-nums inline-block">{displayNumber}</span>
+                <div className="text-white/40 text-sm mt-1">{t('guided.secondsRemaining')}</div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="opacity-0" />
+        )}
+      </div>
+
+      {/* Footer - 退出按钮 */}
+      {/*
+        按钮用 ghost variant 降低视觉干扰（不抢眼，hover 才显）。
+        深色遮罩背景下 ghost 默认文字不可见，显式指定 text-white/60
+        与文件内其他覆盖层文字（text-white/80, /60, /50, /40）一致。
+      */}
+      <div className="flex justify-center mt-10 flex-shrink-0">
+        {showExit && onExit && (
+          <Button variant="ghost" className="text-white/60" onClick={onExit}>
+            <XCircle size={20} />
+            {t('guided.exit')}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ============================================================================
@@ -147,16 +206,8 @@ function GuidedSingleExercisePanel({ exercise, onComplete, onExit }: {
           exercise={exercise}
           guidedState={guidedState}
           guidedConfig={guidedConfig}
+          onExit={handleExit}
         />
-
-        {guidedState.status === 'active' && (
-          <div className="flex justify-center mt-6">
-            <Button variant="secondary" onClick={handleExit}>
-              <XCircle size={20} />
-              {t('guided.exit')}
-            </Button>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -287,7 +338,6 @@ function PackageExerciser({ packageId }: { packageId: string }) {
     if (phase !== 'exercising') return;
     incrementExercisesCompleted();
     if (currentExercise) incrementCategoryExercise(currentExercise.category);
-    playCompleteSound();
 
     if (isLast) {
       setPhase('done');
@@ -449,7 +499,6 @@ export function ExercisePanel() {
     const handleComplete = (ex: Exercise) => {
       incrementExercisesCompleted();
       incrementCategoryExercise(ex.category);
-      playCompleteSound();
       closeExercisePanel();
     };
 

@@ -25,7 +25,7 @@ export function PackageHero() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -16 }}
                 transition={{ duration: 0.25, ease: 'easeInOut' }}
-                className="p-5"
+                className="p-4 h-full flex flex-col"
               >
                 {/* 图标 + 名称、统计 */}
                 <div className="mb-3 flex items-center gap-3">
@@ -43,7 +43,7 @@ export function PackageHero() {
                 </div>
 
                 {/* 描述 */}
-                <p className="mb-3 text-sm leading-5 text-muted-foreground">
+                <p className="flex-1 text-sm leading-5 text-muted-foreground">
                   {pkg.description}
                 </p>
 
