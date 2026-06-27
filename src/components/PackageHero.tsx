@@ -12,9 +12,9 @@ export function PackageHero() {
   const openExercisePanel = useHealthStore((s) => s.openExercisePanel);
 
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-3 flex-1">
       {/* Hero 卡片 — 带动画 */}
-      <div className="relative flex-1 overflow-hidden rounded-2xl border border-border bg-card ring-0 h-[180px]">
+      <div className="relative flex-1 overflow-hidden rounded-2xl border border-border bg-card ring-0 h-full shadow-lg">
         <AnimatePresence mode="wait">
           {exercisePackages.map((pkg, i) => {
             if (i !== selectedIndex) return null;
@@ -54,6 +54,7 @@ export function PackageHero() {
                     {pkg.recommendedFrequency}
                   </span>
                   <Button
+                    variant="secondary"
                     className="h-10 rounded-full px-4 text-sm"
                     onClick={() => openExercisePanel(pkg.id)}
                   >

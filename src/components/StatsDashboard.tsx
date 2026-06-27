@@ -15,10 +15,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 
 function computeStreak(dailyStats: { date: string; exercisesCompleted: number; sitBreaks: number; waterCups: number; customBreaks: number; eyeCare: number }[]): number {
+  const statsMap = new Map(dailyStats.map((s) => [s.date, s]));
   let streak = 0;
   for (let i = 0; i < 365; i++) {
     const dateStr = format(subDays(new Date(), i), 'yyyy-MM-dd');
-    const day = dailyStats.find((s) => s.date === dateStr);
+    const day = statsMap.get(dateStr);
     if (day && (day.sitBreaks > 0 || day.waterCups > 0 || day.exercisesCompleted > 0 || day.customBreaks > 0 || day.eyeCare > 0)) {
       streak++;
     } else if (i > 0) {
@@ -90,15 +91,15 @@ export function StatsDashboard() {
 
   const weeklyChartConfig = {
     sitBreaks: {
-      label: t('statCards.sitReminder', { defaultValue: '久坐休息' }),
+      label: t('statCards.sitReminder', { defaultValue: '久坐提醒' }),
       color: 'var(--chart-1)',
     },
     eyeCare: {
-      label: t('statCards.eyeCare', { defaultValue: '护眼' }),
+      label: t('statCards.eyeCare', { defaultValue: '护眼提醒' }),
       color: 'var(--chart-3)',
     },
     waterCups: {
-      label: t('statCards.waterReminder', { defaultValue: '喝水' }),
+      label: t('statCards.waterReminder', { defaultValue: '喝水提醒' }),
       color: 'var(--chart-4)',
     },
   } satisfies ChartConfig;
@@ -147,21 +148,21 @@ export function StatsDashboard() {
                 <Armchair size={12} className="text-chart-1" />
                 <span className="text-sm font-semibold tabular-nums">{weekTotals.sitBreaks}</span>
               </div>
-              <span className="text-[10px] text-muted-foreground">{t('statCards.sitReminder', { defaultValue: '久坐' })}</span>
+              <span className="text-[10px] text-muted-foreground">{t('statCards.sitReminder', { defaultValue: '久坐提醒' })}</span>
             </div>
             <div className="flex flex-col items-center rounded-md bg-muted/30 py-1">
               <div className="flex items-center gap-0.5">
                 <Eye size={12} className="text-chart-3" />
                 <span className="text-sm font-semibold tabular-nums">{weekTotals.eyeCare}</span>
               </div>
-              <span className="text-[10px] text-muted-foreground">{t('statCards.eyeCare', { defaultValue: '护眼' })}</span>
+              <span className="text-[10px] text-muted-foreground">{t('statCards.eyeCare', { defaultValue: '护眼提醒' })}</span>
             </div>
             <div className="flex flex-col items-center rounded-md bg-muted/30 py-1">
               <div className="flex items-center gap-0.5">
                 <GlassWater size={12} className="text-chart-4" />
                 <span className="text-sm font-semibold tabular-nums">{weekTotals.waterCups}</span>
               </div>
-              <span className="text-[10px] text-muted-foreground">{t('statCards.waterReminder', { defaultValue: '喝水' })}</span>
+              <span className="text-[10px] text-muted-foreground">{t('statCards.waterReminder', { defaultValue: '喝水提醒' })}</span>
             </div>
             <div className="flex flex-col items-center rounded-md bg-muted/30 py-1">
               <div className="flex items-center gap-0.5">

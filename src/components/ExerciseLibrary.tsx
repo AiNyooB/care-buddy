@@ -4,7 +4,7 @@ import { useHealthStore } from '../store';
 import { exercises, categoryNames, priorityLabels } from '../data/exercises';
 import { guidedExerciseConfigs } from '../data/guided-configs';
 import type { Exercise, ExerciseCategory } from '../types';
-import { Play, Clock, Target, CheckCircle, Headphones } from './Icons';
+import { Play, Target, CheckCircle, Headphones, DiamondPercent, Diamond, CircleDot, Plus } from './Icons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -121,7 +121,7 @@ function ExerciseCard({ exercise, onClick }: { exercise: Exercise; onClick: () =
   const priority = priorityLabels[exercise.priority];
   return (
     <Card
-      className="h-[84px] cursor-pointer border border-border p-2 gap-0 ring-0 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring active:bg-muted/50"
+      className="h-[64px] cursor-pointer border border-border p-2 gap-0 ring-0 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring active:bg-muted/50"
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
       role="button"
@@ -134,16 +134,12 @@ function ExerciseCard({ exercise, onClick }: { exercise: Exercise; onClick: () =
             <h4 className="truncate text-type-card-title font-semibold text-foreground">
               {exercise.name}
             </h4>
-            <span className="flex items-center gap-1 text-type-caption font-medium text-muted-foreground">
-              <Clock size={16} />
-              {exercise.duration}
-            </span>
           </div>
-          <span
-            className="ml-2 shrink-0 rounded-full px-2 py-[1px] text-type-badge font-medium text-white"
-            style={{ backgroundColor: priority.color }}
-          >
-            {priority.label}
+          <span className="ml-2 shrink-0 flex items-center" style={{ color: priority.color }}>
+            {exercise.priority === 'core' && <DiamondPercent size={14} aria-label="必做" />}
+            {exercise.priority === 'strong' && <Diamond size={14} aria-label="推荐" />}
+            {exercise.priority === 'recommend' && <CircleDot size={14} aria-label="可选" />}
+            {exercise.priority === 'supplement' && <Plus size={14} aria-label="补充" />}
           </span>
         </div>
         {/* 描述 — 单行，距标题8px */}
@@ -193,7 +189,7 @@ export function ExerciseLibrary() {
       </Tabs>
 
       {/* 运动卡片 — 2 列网格 */}
-      <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 content-start">
+      <div className="grid grid-cols-2 gap-3 content-start">
         {filteredExercises.map((exercise) => (
           <ExerciseCard
             key={exercise.id}

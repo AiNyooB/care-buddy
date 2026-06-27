@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHealthStore } from '../store';
-import { motion } from 'motion/react';
-import { Pause, Play, RotateCcw, ChevronUp, ChevronDown } from 'lucide-react';
+import 'number-flow';
+import { Pause, Play, RotateCcw, ChevronDown, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import {
@@ -22,18 +22,40 @@ import {
   resumeTimer,
   timerPauseTask,
   timerResumeTask,
-  timerResetTask,
 } from '../services';
 import { cn } from '@/lib/utils';
+import { BorderBeam } from '@/components/ui/border-beam';
 
-function formatCountdown(seconds: number) {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) {
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  }
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+const TWO_DIGIT_FORMAT = { minimumIntegerDigits: 2 };
+
+/** React 包装：通过 ref 正确设置 Custom Element 的属性 */
+function NumberFlow({
+  value,
+  trend,
+  format,
+}: {
+  value: number;
+  trend?: number;
+  format?: Intl.NumberFormatOptions;
+}) {
+  const ref = useRef<HTMLElement>(null);
+
+  // 首次挂载时设 format / trend（只一次）
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (trend !== undefined) (el as any).trend = trend;
+    if (format !== undefined) (el as any).format = format;
+  }, [trend, format]);
+
+  // value 变化时通过 update() 触发（只有 getter）
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    (el as any).update(value);
+  }, [value]);
+
+  return <number-flow ref={ref} />;
 }
 
 function formatDurationUnit(seconds: number, t: ReturnType<typeof useTranslation>['t']) {
@@ -71,11 +93,15 @@ export function CountdownSection() {
   const setPaused = useHealthStore((s) => s.setPaused);
   const pauseTask = useHealthStore((s) => s.pauseTask);
   const resumeTask = useHealthStore((s) => s.resumeTask);
-  const resetTask = useHealthStore((s) => s.resetTask);
   const resetAllTasks = useHealthStore((s) => s.resetAllTasks);
 
-  const [cardPage, setCardPage] = useState(1);
   const cardsPerPage = 3;
+  const cardPage = useHealthStore((s) => s.cardPage);
+  const setCardPage = useHealthStore((s) => s.setCardPage);
+
+  // 右侧卡片区折叠状态（存于 store 跨页面切换保持）
+  const rightCollapsed = useHealthStore((s) => s.rightCollapsed);
+  const setRightCollapsed = useHealthStore((s) => s.setRightCollapsed);
 
   const enabledTasks = useMemo(() => tasks.filter((t) => t.enabled), [tasks]);
 
@@ -108,7 +134,7 @@ export function CountdownSection() {
   // 状态统计
   const runningCount = enabledTasks.filter((t) => {
     const ts = taskStates[t.id];
-    return ts && !ts.paused && ts.countdown > 0;
+    return ts && !ts.paused && !isPaused && ts.countdown > 0;
   }).length;
   const pausedCount = enabledTasks.filter((t) => {
     const ts = taskStates[t.id];
@@ -120,6 +146,13 @@ export function CountdownSection() {
   const startIndex = (cardPage - 1) * cardsPerPage;
   const currentCards = enabledTasks.slice(startIndex, startIndex + cardsPerPage);
 
+  // 单提醒时：合并显示，不渲染右侧卡片列表
+  const showCardList = enabledTasks.length > 1;
+  // 折叠按钮只在 showCardList 为 true 时出现，此时手动折叠优先于自动展开
+  const mainCardWidth = !showCardList || rightCollapsed
+    ? 'var(--grid-content)'
+    : 'calc(var(--grid-col)*4 + var(--grid-gap)*3)';
+
   const mainProgress = mainTask
     ? 1 - mainTask.remaining / (mainTask.task.interval * 60)
     : 0;
@@ -127,18 +160,17 @@ export function CountdownSection() {
   const handleTogglePause = async (taskId: string) => {
     const ts = taskStates[taskId];
     if (!ts) return;
-    if (ts.paused) {
-      resumeTask(taskId);
-      await timerResumeTask(taskId).catch(console.warn);
-    } else {
-      pauseTask(taskId);
-      await timerPauseTask(taskId).catch(console.warn);
+    try {
+      if (ts.paused) {
+        await timerResumeTask(taskId);
+        resumeTask(taskId);
+      } else {
+        await timerPauseTask(taskId);
+        pauseTask(taskId);
+      }
+    } catch {
+      console.warn('timer toggle failed, state unchanged');
     }
-  };
-
-  const handleReset = async (taskId: string) => {
-    resetTask(taskId);
-    await timerResetTask(taskId).catch(console.warn);
   };
 
   const handleGlobalPause = async () => {
@@ -165,15 +197,14 @@ export function CountdownSection() {
             {t('dashboard.countdown', { defaultValue: '倒计时' })}
           </h2>
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex">
+            <DropdownMenuTrigger className="flex items-center">
               <Button
                 variant="outline"
                 size="icon-xs"
-                className="flex-col rounded-md border-[#ebebeb] [&_svg]:size-3"
+                className="rounded-md border-[#ebebeb] [&_svg]:size-3"
                 tabIndex={-1}
               >
-                <ChevronUp size={12} strokeWidth={2} />
-                <ChevronDown size={12} strokeWidth={2} />
+                <ChevronDown strokeWidth={2} />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
@@ -198,94 +229,152 @@ export function CountdownSection() {
           </DropdownMenu>
         </div>
 
-        {/* 分页器 — 只有 >1 页时显示 */}
-        {totalCardPages > 1 && (
-          <Pagination className="mx-0 w-auto">
-            <PaginationContent>
-              {Array.from({ length: totalCardPages }, (_, i) => i + 1).map((page) => (
-                <PaginationItem key={page}>
-                  <PaginationLink
-                    isActive={page === cardPage}
-                    onClick={() => setCardPage(page)}
-                    size="icon-xs"
-                    className={cn(
-                      'rounded-md',
-                      page === cardPage && 'border border-[#ebebeb]'
-                    )}
-                  >
-                    {page}
-                  </PaginationLink>
-                </PaginationItem>
-              ))}
-            </PaginationContent>
-          </Pagination>
-        )}
+        {/* 右侧：折叠按钮 + 分页器 */}
+        <div className="flex items-center gap-2">
+          {showCardList && (
+            <Button
+              variant="outline"
+              size="icon-xs"
+              onClick={() => setRightCollapsed(!rightCollapsed)}
+              className="rounded-md border-[#ebebeb] mr-1"
+            >
+              <ArrowRight
+                strokeWidth={1.5}
+                className={cn(
+                  'transition-transform duration-300 ease-in-out',
+                  rightCollapsed && 'rotate-180'
+                )}
+              />
+            </Button>
+          )}
+
+          {/* 分页器 — 只有 >1 页且右侧展开时显示 */}
+          {!rightCollapsed && totalCardPages > 1 && (
+            <Pagination className="mx-0 w-auto">
+              <PaginationContent>
+                {Array.from({ length: totalCardPages }, (_, i) => i + 1).map((page) => (
+                  <PaginationItem key={page}>
+                    <PaginationLink
+                      isActive={page === cardPage}
+                      onClick={() => setCardPage(page)}
+                      size="icon-xs"
+                      className={cn(
+                        'rounded-md',
+                        page === cardPage && 'border border-[#ebebeb]'
+                      )}
+                    >
+                      {page}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+              </PaginationContent>
+            </Pagination>
+          )}
+        </div>
       </div>
 
       {/* ================================================================ */}
       {/* 主计时卡 — 绝对定位 */}
       {/* ================================================================ */}
       <Card
-        className="absolute overflow-hidden ring-0"
+        className="absolute overflow-hidden ring-0 transition-[width] duration-300 ease-in-out"
         style={{
           top: 'calc(24px + var(--grid-gap))',
           left: 0,
-          width: 'calc(var(--grid-col)*4 + var(--grid-gap)*3)',
+          width: mainCardWidth,
           height: '210px',
           borderRadius: '14px',
           padding: '12px',
         }}
       >
-        {/* 状态指示 */}
+        {/* 状态指示 — 居中于计时器盒上方 */}
         <div
-          className="absolute flex flex-col"
-          style={{ top: '30px', left: '100px' }}
+          className="absolute flex items-center justify-center gap-2 -translate-x-1/2"
+          style={{ top: '30px', left: '50%', width: '192px' }}
         >
-          <div className="flex items-center gap-1">
-            <span className="size-2 shrink-0 rounded-full bg-[#2da44e]" />
-            <span className="text-type-caption text-muted-foreground">
-              {t('dashboard.runningReminders', { count: runningCount, defaultValue: '{{count}}个提醒进行中' }).replace('{{count}}', String(runningCount))}
+          {enabledTasks.length === 0 ? (
+            <span className="text-type-caption text-muted-foreground whitespace-nowrap">
+              {t('dashboard.enableRemindersHint', { defaultValue: '请在设置中开启提醒' })}
             </span>
-          </div>
-          {pausedCount > 0 && (
-            <div className="flex items-center gap-1">
-              <span className="size-2 shrink-0 rounded-full bg-[#f97716]" />
-              <span className="text-type-caption text-muted-foreground">
-                {t('dashboard.pausedReminders', { count: pausedCount, defaultValue: '{{count}}个提醒暂停中' }).replace('{{count}}', String(pausedCount))}
-              </span>
-            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-1">
+                <span className="size-2 shrink-0 rounded-full bg-[#2da44e]" />
+                <span className="text-type-caption text-muted-foreground">
+                  {t('dashboard.runningReminders', { count: runningCount, defaultValue: '{{count}}个' })}
+                </span>
+              </div>
+              {pausedCount > 0 && (
+                <div className="flex items-center gap-1">
+                  <span className="size-2 shrink-0 rounded-full bg-[#f97716]" />
+                  <span className="text-type-caption text-muted-foreground">
+                    {t('dashboard.pausedReminders', { count: pausedCount, defaultValue: '{{count}}个' })}
+                  </span>
+                </div>
+              )}
+            </>
           )}
         </div>
 
         {/* 计时器盒 */}
         <div
-          className="absolute flex flex-col items-center justify-center rounded-[22px] bg-muted border border-[#efefef] timer-breathe"
-          style={{ top: '60px', left: '50px', width: '192px', height: '88px' }}
+          className="absolute flex flex-col items-center justify-center rounded-2xl bg-card shadow-md ring-1 ring-border overflow-hidden -translate-x-1/2"
+          style={{ top: '60px', left: '50%', width: '192px', height: '88px' }}
         >
-          <motion.span
-            key={mainTask ? mainTask.remaining : undefined}
-            initial={mainTask ? { y: 6, opacity: 0 } : false}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            className="text-type-timer-number font-bold text-foreground tabular-nums"
-          >
-            {mainTask ? formatCountdown(mainTask.remaining) : '--:--:--'}
-          </motion.span>
-          <span className="text-type-caption text-muted-foreground">
-            {mainTask
-              ? t('dashboard.remainingPercent', { percent: Math.round((1 - mainProgress) * 100), defaultValue: `剩余${Math.round((1 - mainProgress) * 100)}%` }).replace('{{percent}}', String(Math.round((1 - mainProgress) * 100)))
-              : ''}
-          </span>
+          {mainTask && (
+            <BorderBeam
+              duration={3}
+              colorFrom="#22c55e"
+              colorTo="#3b82f6"
+              spring
+            />
+          )}
+          {mainTask ? (
+            <div className="flex items-baseline text-type-timer-number font-bold text-foreground tabular-nums relative z-10">
+              {(() => {
+                const h = Math.floor(mainTask.remaining / 3600);
+                const m = Math.floor((mainTask.remaining % 3600) / 60);
+                const s = mainTask.remaining % 60;
+                return (
+                  <>
+                    {h > 0 && (
+                      <>
+                        <NumberFlow value={h} trend={-1} format={TWO_DIGIT_FORMAT} />
+                        <span className="-mx-0.5">:</span>
+                      </>
+                    )}
+                    <NumberFlow value={m} trend={-1} format={TWO_DIGIT_FORMAT} />
+                    <span className="-mx-0.5">:</span>
+                    <NumberFlow value={s} trend={-1} format={TWO_DIGIT_FORMAT} />
+                  </>
+                );
+              })()}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-1 relative z-10">
+              <span className="text-type-timer-number font-bold text-muted-foreground/40 tabular-nums tracking-[4px]">
+                --:--
+              </span>
+              <span className="text-type-body text-muted-foreground whitespace-nowrap">
+                {t('dashboard.noActiveReminders', { defaultValue: '暂无进行中的提醒' })}
+              </span>
+            </div>
+          )}
+          {mainTask && (
+            <span className="text-type-caption text-muted-foreground relative z-10">
+              {t('dashboard.remainingPercent', { percent: Math.round((1 - mainProgress) * 100), defaultValue: '剩余{{percent}}%' })}
+            </span>
+          )}
         </div>
 
-        {/* 即将提醒 */}
+        {/* 当前任务标签 — 与计时器盒居中对齐 */}
         {upcomingTask && (
           <div
-            className="absolute flex items-center gap-1"
-            style={{ top: '160px', left: '85.5px' }}
+            className="absolute flex items-center justify-center gap-1 -translate-x-1/2"
+            style={{ top: '160px', left: '50%', width: '192px' }}
           >
             <span className="text-type-body text-muted-foreground">
-              {t('dashboard.upcoming', { defaultValue: '即将提醒:' })}
+              {t('dashboard.upcoming', { defaultValue: '当前:' })}
             </span>
             <span className="text-type-body text-foreground">
               {t('taskNames.' + upcomingTask.task.id, { defaultValue: upcomingTask.task.title })}
@@ -295,14 +384,16 @@ export function CountdownSection() {
       </Card>
 
       {/* ================================================================ */}
-      {/* 提醒卡片区 — 绝对定位 */}
+      {/* 提醒卡片区 — 绝对定位（单提醒时合并显示，不渲染此区域） */}
       {/* ================================================================ */}
+      {showCardList && (
       <div
-        className="absolute"
+        className="absolute overflow-hidden transition-all duration-300 ease-in-out"
         style={{
           top: 'calc(24px + var(--grid-gap))',
           left: 'calc(var(--grid-col)*4 + var(--grid-gap)*4)',
-          width: 'calc(var(--grid-col)*2 + var(--grid-gap))',
+          width: rightCollapsed ? '0px' : 'calc(var(--grid-col)*2 + var(--grid-gap))',
+          opacity: rightCollapsed ? 0 : 1,
           height: '210px',
         }}
       >
@@ -316,72 +407,51 @@ export function CountdownSection() {
             <Card
               key={task.id}
               className={cn(
-                'absolute overflow-hidden border border-border ring-0 group',
-                taskPaused && 'opacity-60'
+                'absolute border border-border !ring-0 rounded-[10px] p-2',
+                taskPaused && 'border-warning outline-1 outline-offset-[-1px] outline-warning/30'
               )}
               style={{
                 top: `${index * 74}px`,
                 left: 0,
                 width: 'calc(var(--grid-col)*2 + var(--grid-gap))',
                 height: '62px',
-                borderRadius: '10px',
-                padding: '8px',
               }}
             >
-              <div className="flex h-full items-center justify-between transition-opacity duration-200 group-hover:opacity-0">
-                {/* 左侧：倒计时 + 任务名 */}
-                <div className="flex flex-col">
-                  <span className="text-type-card-number font-semibold text-foreground tabular-nums leading-[var(--type-card-number-lh)]">
+              <div className="flex h-full flex-col justify-between">
+                {/* 第一行：计时 + 暂停按钮 */}
+                <div className="flex items-center justify-between">
+                  <span className="text-type-card-number font-semibold text-muted-foreground tabular-nums leading-[var(--type-card-number-lh)]">
                     {formatDurationUnit(remaining, t)}
                   </span>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => handleTogglePause(task.id)}
+                  >
+                    {taskPaused ? <Play size={12} /> : <Pause size={12} />}
+                  </Button>
+                </div>
+                {/* 第二行：任务名 + 百分比/已暂停（互显） */}
+                <div className="flex items-center justify-between">
                   <span className="text-type-body text-muted-foreground leading-[var(--type-body-lh)]">
                     {t('taskNames.' + task.id, { defaultValue: task.title })}
                   </span>
-                </div>
-
-                {/* 右侧：百分比 + 状态 */}
-                <div className="flex flex-col items-end">
-                  <span className="text-type-caption text-muted-foreground leading-[var(--type-caption-lh)]">
-                    {Math.round((1 - progress) * 100)}%
-                  </span>
-                  <span className="text-type-caption font-medium text-muted-foreground leading-[var(--type-caption-lh)]">
-                    {taskPaused
-                      ? t('dashboard.paused', { defaultValue: '已暂停' })
-                      : t('dashboard.normal', { defaultValue: '正常' })}
-                  </span>
-                </div>
-              </div>
-
-              {/* Hover 覆盖层 */}
-              <div className="absolute inset-0 flex flex-col items-center justify-between rounded-[8px] bg-card p-2 pointer-events-none opacity-0 scale-95 transition-all duration-200 ease-out group-hover:pointer-events-auto group-hover:opacity-100 group-hover:scale-100">
-                {/* 顶部：提醒名称 */}
-                <span className="text-type-caption font-normal text-foreground text-center leading-[var(--type-caption-lh)]">
-                  {t('taskNames.' + task.id, { defaultValue: task.title })}
-                </span>
-                {/* 底部：操作按钮 */}
-                <div className="flex gap-1">
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    className="px-3 pointer-events-auto"
-                    onClick={() => handleTogglePause(task.id)}
-                  >
-                    {ts?.paused ? <Play size={12} /> : <Pause size={12} />}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    className="px-3 pointer-events-auto"
-                    onClick={() => handleReset(task.id)}
-                  >
-                    <RotateCcw size={12} />
-                  </Button>
+                  {taskPaused ? (
+                    <span className="text-type-caption font-medium text-warning leading-[var(--type-caption-lh)]">
+                      {t('dashboard.paused', { defaultValue: '已暂停' })}
+                    </span>
+                  ) : (
+                    <span className="text-type-caption text-muted-foreground leading-[var(--type-caption-lh)]">
+                      {Math.round((1 - progress) * 100)}%
+                    </span>
+                  )}
                 </div>
               </div>
             </Card>
           );
         })}
       </div>
+      )}
     </div>
   );
 }

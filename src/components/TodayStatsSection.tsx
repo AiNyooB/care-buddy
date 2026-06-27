@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { format, subDays } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { useHealthStore } from '../store';
@@ -11,18 +11,19 @@ import {
   PaginationItem,
   PaginationLink,
 } from '@/components/ui/pagination';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
+import { BarChart, Bar, XAxis, YAxis, ReferenceLine } from 'recharts';
+import { ChartContainer, type ChartConfig } from '@/components/ui/chart';
 import type { ExerciseCategory, PackageType } from '../types';
 
 const CATEGORIES: ExerciseCategory[] = ['spine', 'circulation', 'metabolism', 'vision', 'wrist'];
 const PACKAGES: PackageType[] = ['package-quick', 'package-standard', 'package-deep'];
 
 function computeStreak(dailyStats: { date: string; exercisesCompleted: number; sitBreaks: number; waterCups: number; customBreaks: number }[]): number {
+  const statsMap = new Map(dailyStats.map((s) => [s.date, s]));
   let streak = 0;
   for (let i = 0; i < 365; i++) {
     const dateStr = format(subDays(new Date(), i), 'yyyy-MM-dd');
-    const day = dailyStats.find((s) => s.date === dateStr);
+    const day = statsMap.get(dateStr);
     if (day && (day.sitBreaks > 0 || day.waterCups > 0 || day.exercisesCompleted > 0 || day.customBreaks > 0)) {
       streak++;
     } else if (i > 0) {
@@ -32,13 +33,45 @@ function computeStreak(dailyStats: { date: string; exercisesCompleted: number; s
   return streak;
 }
 
+function formatWorkMinutes(minutes: number): { numerical: ReactNode; unit: string } {
+  if (minutes >= 60) {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return {
+      numerical: (
+        <>
+          <span>{h}</span>
+          <span className="text-type-caption text-muted-foreground">h</span>
+          {m > 0 && (
+            <>
+              <span>{m}</span>
+              <span className="text-type-caption text-muted-foreground">m</span>
+            </>
+          )}
+        </>
+      ),
+      unit: '',
+    };
+  }
+  return {
+    numerical: (
+      <>
+        <span>{minutes}</span>
+        <span className="text-type-caption text-muted-foreground">m</span>
+      </>
+    ),
+    unit: '',
+  };
+}
+
 export function TodayStatsSection() {
   const { t } = useTranslation();
   const todayStats = useHealthStore((s) => s.todayStats);
   const dailyStats = useHealthStore((s) => s.dailyStats);
 
   const [statPage, setStatPage] = useState(1);
-  const [chartMode, setChartMode] = useState<'exercise' | 'package'>('exercise');
+  const chartMode = useHealthStore((s) => s.chartMode);
+  const setChartMode = useHealthStore((s) => s.setChartMode);
 
   const streak = useMemo(() => computeStreak(dailyStats), [dailyStats]);
 
@@ -46,8 +79,8 @@ export function TodayStatsSection() {
     {
       icon: <MonitorCheck size={20} />,
       label: t('dashboard.workMinutes', { defaultValue: '运行时长' }),
-      value: todayStats.workMinutes,
-      unit: t('dashboard.minutes', { defaultValue: '分钟' }),
+      numerical: formatWorkMinutes(todayStats.workMinutes).numerical,
+      unit: '',
     },
     {
       icon: <Activity size={20} />,
@@ -86,21 +119,20 @@ export function TodayStatsSection() {
       }));
     }
     return PACKAGES.map((pkg) => ({
-      name: pkg === 'package-quick'
-        ? t('categories.wrist')
-        : pkg === 'package-standard'
-          ? t('categories.circulation')
-          : t('categories.metabolism'),
+      name: t('categories.' + pkg),
       count: todayStats.packageCounts[pkg] ?? 0,
     }));
   }, [chartMode, todayStats, t]);
 
   const chartConfig = {
     count: {
-      label: t('statCards.todayExercise', { defaultValue: '今日锻炼' }),
+      label: t('statCards.todayExercise', { defaultValue: '运动次数' }),
       color: 'var(--primary)',
     },
   } satisfies ChartConfig;
+
+  const maxCount = useMemo(() => Math.max(...chartData.map(d => d.count), 4), [chartData]);
+  const yTicks = useMemo(() => Array.from({ length: maxCount + 1 }, (_, i) => i), [maxCount]);
 
   return (
     <div className="relative" style={{ height: '346px' }}>
@@ -143,8 +175,8 @@ export function TodayStatsSection() {
       >
         {statCards.map((card, index) => (
           <Card
-            key={card.label}
-            className="absolute flex flex-col items-center justify-between ring-0 border border-border p-2"
+            key={index}
+            className="absolute flex flex-col items-center justify-between gap-0 ring-0 border border-border p-2"
             style={{
               top: 0,
               left: `calc(${index} * (79.2px + var(--grid-gap)))`,
@@ -153,20 +185,24 @@ export function TodayStatsSection() {
               borderRadius: '10px',
             }}
           >
-            <div className="flex size-8 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
               {card.icon}
             </div>
-            <div className="flex items-baseline gap-0.5">
-              <span className="text-type-card-number font-semibold text-foreground tabular-nums">
-                {card.value}
-              </span>
-              <span className="text-type-caption text-muted-foreground">
-                {card.unit}
+            <div className="flex flex-col items-center">
+              <div className="flex items-baseline gap-0.5">
+                <span className="text-type-card-number font-semibold text-foreground tabular-nums">
+                  {'numerical' in card ? (card as { numerical: ReactNode }).numerical : card.value}
+                </span>
+                {card.unit && (
+                  <span className="text-type-caption text-muted-foreground">
+                    {card.unit}
+                  </span>
+                )}
+              </div>
+              <span className="text-type-body text-muted-foreground text-center leading-tight">
+                {card.label}
               </span>
             </div>
-            <span className="text-type-body text-muted-foreground text-center leading-tight">
-              {card.label}
-            </span>
           </Card>
         ))}
       </div>
@@ -175,7 +211,7 @@ export function TodayStatsSection() {
       {/* 今日锻炼图表卡片 */}
       {/* ================================================================ */}
       <Card
-        className="absolute ring-0 border border-border p-3"
+        className="absolute gap-0 ring-0 border border-border p-3"
         style={{
           top: 'calc(36px + 122px + var(--grid-gap))',
           left: 0,
@@ -185,11 +221,8 @@ export function TodayStatsSection() {
         }}
       >
         <div className="flex items-center gap-2">
-          <div className="flex size-6 items-center justify-center rounded-md bg-primary/10 text-primary">
-            <Activity size={13} />
-          </div>
           <span className="text-sm font-semibold text-foreground">
-            {t('statCards.todayExercise', { defaultValue: '今日锻炼' })}
+            {t('statCards.todayExercise', { defaultValue: '运动次数' })}
           </span>
           <div className="ml-auto flex gap-1">
             <Toggle
@@ -210,13 +243,14 @@ export function TodayStatsSection() {
             </Toggle>
           </div>
         </div>
-        <ChartContainer config={chartConfig} className="!aspect-auto mt-2 w-full" style={{ height: 'calc(176px - 32px - 8px - 16px)' }}>
-          <BarChart data={chartData} margin={{ top: 4, right: 0, left: 0, bottom: -6 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+        <ChartContainer config={chartConfig} className="!aspect-auto mt-2 w-full [&_*]:outline-none" style={{ height: 'calc(176px - 32px - 8px - 16px)' }}>
+          <BarChart data={chartData} margin={{ top: 20, right: 0, left: -12, bottom: -6 }}>
+            {yTicks.filter(t => t >= 0).map(tick => (
+              <ReferenceLine key={tick} y={tick} stroke="var(--border)" strokeDasharray="3 3" />
+            ))}
             <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-            <YAxis width={28} tick={{ fontSize: 10, fill: 'var(--muted-foreground)', textAnchor: 'end' }} axisLine={false} tickLine={false} allowDecimals={false} />
-            <ChartTooltip content={<ChartTooltipContent />} />
-            <Bar dataKey="count" fill="var(--color-count)" radius={[4, 4, 0, 0]} barSize={18} />
+            <YAxis domain={[0, maxCount]} ticks={yTicks} width={28} tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
+            <Bar dataKey="count" fill="var(--color-count)" radius={[4, 4, 0, 0]} barSize={18} label={{ position: 'top', fontSize: 11, fontWeight: 600, fill: 'var(--foreground)' }} />
           </BarChart>
         </ChartContainer>
       </Card>

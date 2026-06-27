@@ -118,6 +118,13 @@ interface HealthStore {
   isIdle: boolean;
 
   // ============================================================================
+  // UI 状态（跨页面切换保持）
+  // ============================================================================
+  rightCollapsed: boolean;
+  cardPage: number;
+  chartMode: 'exercise' | 'package';
+
+  // ============================================================================
   // 任务 Actions
   // ============================================================================
   updateTask: (id: string, updates: Partial<Task>) => void;
@@ -180,6 +187,9 @@ interface HealthStore {
   // ============================================================================
   setPaused: (paused: boolean) => void;
   setIdle: (idle: boolean) => void;
+  setRightCollapsed: (collapsed: boolean) => void;
+  setCardPage: (page: number) => void;
+  setChartMode: (mode: 'exercise' | 'package') => void;
   resetAllTasks: () => void;
   checkDayTransition: () => void;
 }
@@ -316,6 +326,11 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
 
   isPaused: false,
   isIdle: false,
+
+  // UI 状态（跨页面切换保持）
+  rightCollapsed: false,
+  cardPage: 1,
+  chartMode: 'exercise' as const,
 
   // --------------------------------------------------------------------------
   // 任务 Actions
@@ -779,6 +794,12 @@ export const useHealthStore = create<HealthStore>((set, get) => ({
   setPaused: (paused) => set({ isPaused: paused }),
 
   setIdle: (idle) => set({ isIdle: idle }),
+
+  setRightCollapsed: (collapsed) => set({ rightCollapsed: collapsed }),
+
+  setCardPage: (page) => set({ cardPage: page }),
+
+  setChartMode: (mode) => set({ chartMode: mode }),
 
   resetAllTasks: () => {
     set((state) => {

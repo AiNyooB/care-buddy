@@ -270,6 +270,12 @@
   animation: timer-breathe 3s ease-in-out infinite;
 }
 
+@keyframes border-beam {
+  100% {
+    offset-distance: 100%;
+  }
+}
+
 [data-theme="dark"] {
   /* ========================================
      Core Colors — dark
