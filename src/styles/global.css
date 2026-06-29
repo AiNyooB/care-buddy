@@ -44,6 +44,9 @@
   --spacing-grid-offset: var(--grid-offset);
   --spacing-grid-content: var(--grid-content);
 
+  /* Grid 调试色 */
+  --color-grid-debug: var(--grid-debug-color);
+
   /* ===== Chart Colors ===== */
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -74,6 +77,9 @@
   --font-sans: "Geist Variable", sans-serif;
 
   /* Font sizes - 使用 --text-* 命名空间 */
+  --text-type-hero-title: 32px;
+  --text-type-hero-title--line-height: 40px;
+
   --text-type-page-title: 18px;
   --text-type-page-title--line-height: 32px;
 
@@ -87,7 +93,7 @@
   --text-type-caption--line-height: 18px;
 
   --text-type-timer-number: 32px;
-  --text-type-timer-number--line-height: 39px;
+  --text-type-timer-number--line-height: 40px;
 
   --text-type-lock-timer: 40px;
   --text-type-lock-timer--line-height: 50px;
@@ -199,8 +205,6 @@
      Layout
      ======================================== */
   --sidebar-width: 76px;
-  --grid-col: 96px;
-  --grid-gap: 16px;
   --content-padding: 16px;
   --titlebar-height: 48px;
   --content-width: 464px;
@@ -210,6 +214,10 @@
   /* ========================================
      Typography — Font Sizes & Weights
      ======================================== */
+  --type-hero-title: 32px;
+  --type-hero-title-weight: 700;
+  --type-hero-title-lh: 40px;
+
   --type-page-title: 18px;
   --type-page-title-weight: 700;
   --type-page-title-lh: 32px;
@@ -224,7 +232,7 @@
   --type-caption-lh: 18px;
   --type-timer-number: 32px;
   --type-timer-number-weight: 700;
-  --type-timer-number-lh: 39px;
+  --type-timer-number-lh: 40px;
   --type-lock-timer: 40px;
   --type-lock-timer-weight: 700;
   --type-lock-timer-lh: 50px;
@@ -249,6 +257,10 @@
   --grid-gap: 12px;
   --grid-offset: 24px;
   --grid-content: calc(64px * 6 + 12px * 5); /* 444px */
+
+  /* Grid 调试色（Figma 定义的 FF0000 / 10%） */
+  --grid-debug-color: #FF0000;
+  --grid-debug-alpha: 0.1;
 }
 
 @keyframes lockFadeIn {

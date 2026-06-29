@@ -3,13 +3,32 @@
  * 封装所有 @tauri-apps/api 调用，作为前端与 Rust 后端的唯一接口
  */
 
-import { invoke } from '@tauri-apps/api/core';
-import { emit, listen as tauriListen } from '@tauri-apps/api/event';
-export const listen = tauriListen;
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { emit, listen as tauriListen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification';
 import type { Task, AppSettings } from '../types';
+
+function isTauri(): boolean {
+  return typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
+}
+
+export async function invoke<T = unknown>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (!isTauri()) {
+    console.warn(`[tauri] invoke skipped — Tauri IPC not available (cmd: ${cmd})`);
+    throw new Error('Tauri IPC not available');
+  }
+  return tauriInvoke<T>(cmd, args);
+}
+
+export async function listen<T>(event: string, handler: (event: { payload: T }) => void): Promise<UnlistenFn> {
+  if (!isTauri()) {
+    console.warn(`[tauri] listen skipped — Tauri IPC not available (event: ${event})`);
+    return () => {};
+  }
+  return tauriListen<T>(event, handler);
+}
 
 // ============================================================================
 // 任务管理
@@ -41,6 +60,10 @@ export async function syncTasks(tasks: Task[]): Promise<void> {
  * 请求通知权限
  */
 export async function requestNotificationPermission(): Promise<boolean> {
+  if (!isTauri()) {
+    console.warn('[tauri] notification permission skipped — Tauri IPC not available');
+    return false;
+  }
   let granted = await isPermissionGranted();
   if (!granted) {
     const permission = await requestPermission();
@@ -54,10 +77,18 @@ export async function requestNotificationPermission(): Promise<boolean> {
 // ============================================================================
 
 export async function getAutoStartEnabled(): Promise<boolean> {
+  if (!isTauri()) {
+    console.warn('[tauri] autostart check skipped — Tauri IPC not available');
+    return false;
+  }
   return isEnabled();
 }
 
 export async function setAutoStart(enabled: boolean): Promise<void> {
+  if (!isTauri()) {
+    console.warn('[tauri] autostart set skipped — Tauri IPC not available');
+    return;
+  }
   if (enabled) {
     await enable();
   } else {

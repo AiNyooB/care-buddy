@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHealthStore } from '../store';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { setAutoStart, saveSettingsToBackend, emitSettingsUpdated, syncTasks, setIdleThreshold, updateTrayLanguage } from '../services';
 import { Shield, Sun, Moon, Monitor, Globe, Clock, Timer, GlassWater, Eye, Plus, X, Trash2, ChevronRight, Bell } from 'lucide-react';
@@ -72,9 +73,41 @@ function MergeWarning({ current, all, threshold }: MergeWarningProps) {
 
   const names = similarTasks.map((t) => t.title).join('、');
   return (
-    <div className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+    <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
       <Bell size={12} className="mt-0.5 shrink-0" />
       <span>与 {names} 间隔接近，开启锁屏后会合并触发</span>
+    </div>
+  );
+}
+
+// ============================================================================
+// 设置行 — 复用 General / Advanced / 未来其他 section
+// ============================================================================
+
+interface SettingRowProps {
+  label: ReactNode;
+  desc?: ReactNode;
+  icon?: typeof Globe;
+  destructive?: boolean;
+  children: ReactNode;
+}
+
+function SettingRow({ label, desc, icon: Icon, destructive, children }: SettingRowProps) {
+  return (
+    <div className="flex items-center justify-between py-2">
+      <div className="flex flex-col gap-0.5">
+        <Label
+          className={cn(
+            'flex items-center gap-1 text-sm',
+            destructive && 'text-destructive'
+          )}
+        >
+          {Icon && <Icon size={14} />}
+          {label}
+        </Label>
+        {desc && <span className="text-xs text-muted-foreground">{desc}</span>}
+      </div>
+      <div className="flex items-center gap-2">{children}</div>
     </div>
   );
 }
@@ -236,7 +269,7 @@ export function RemindersSection() {
                       <span className="text-sm font-medium text-foreground truncate">{task.title}</span>
                       {isDefault && (
                         <Badge variant="secondary" className="text-[10px] h-4 px-1.5 shrink-0">
-                          默认
+                          {t('settings.defaultReminder')}
                         </Badge>
                       )}
                     </CollapsibleTrigger>
@@ -251,7 +284,7 @@ export function RemindersSection() {
                   <CardContent className="p-3 pt-0 space-y-2 border-t border-border">
                     {!isDefault && (
                       <div className="flex items-center gap-2">
-                        <Label className="text-xs text-muted-foreground w-12 shrink-0">调度方式</Label>
+                        <Label className="text-xs text-muted-foreground w-12 shrink-0">{t('settings.scheduleType')}</Label>
                         <Select
                           value={task.scheduleType}
                           onValueChange={(v) => handleScheduleTypeChange(task.id, v as ScheduleType)}
@@ -260,8 +293,8 @@ export function RemindersSection() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="interval">间隔</SelectItem>
-                            <SelectItem value="daily">固定时间</SelectItem>
+                            <SelectItem value="interval">{t('settings.interval')}</SelectItem>
+                            <SelectItem value="daily">{t('settings.fixedTime')}</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -269,12 +302,12 @@ export function RemindersSection() {
 
                     {task.scheduleType === 'interval' ? (
                       <div className="flex items-center gap-2">
-                        <Label className="text-xs text-muted-foreground w-12 shrink-0">间隔</Label>
+                        <Label className="text-xs text-muted-foreground w-12 shrink-0">{t('settings.interval')}</Label>
                         {numField(task.id, 'interval', task.interval, 5, 180, 5, t('time.minutes'), 5)}
                       </div>
                     ) : (
                       <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground w-12">时间</Label>
+                        <Label className="text-xs text-muted-foreground w-12">{t('settings.time')}</Label>
                         {task.dailyTimes.map((time, i) => (
                           <div key={i} className="flex items-center gap-1 ml-12">
                             <Input
@@ -297,7 +330,7 @@ export function RemindersSection() {
                           onClick={() => handleAddTime(task.id)}
                           className="h-6 text-xs ml-12 text-muted-foreground hover:text-foreground"
                         >
-                          <Plus size={12} /> 添加时间
+                          <Plus size={12} /> {t('settings.addTime')}
                         </Button>
                       </div>
                     )}
@@ -307,13 +340,13 @@ export function RemindersSection() {
                     )}
 
                     <div className="flex items-center gap-2">
-                      <Label className="text-xs text-muted-foreground w-12 shrink-0">预告</Label>
-                      {numField(task.id, 'preNotificationSeconds', task.preNotificationSeconds, 0, 120, 0, '秒', 5)}
+                      <Label className="text-xs text-muted-foreground w-12 shrink-0">{t('settings.preNotify')}</Label>
+                      {numField(task.id, 'preNotificationSeconds', task.preNotificationSeconds, 0, 120, 0, t('settings.seconds'), 5)}
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Label className="text-xs text-muted-foreground w-12 shrink-0">锁屏时长</Label>
-                      {numField(task.id, 'lockDuration', task.lockDuration, 10, 600, 60, '秒', 10)}
+                      <Label className="text-xs text-muted-foreground w-12 shrink-0">{t('settings.lockDuration')}</Label>
+                      {numField(task.id, 'lockDuration', task.lockDuration, 10, 600, 60, t('settings.seconds'), 10)}
                     </div>
 
                     {!isDefault && (
@@ -324,7 +357,7 @@ export function RemindersSection() {
                           onClick={() => handleDeleteTask(task.id)}
                           className="h-7 text-xs"
                         >
-                          <Trash2 size={12} /> 删除提醒
+                          <Trash2 size={12} /> {t('settings.deleteReminder')}
                         </Button>
                       </div>
                     )}
@@ -344,25 +377,25 @@ export function RemindersSection() {
             onClick={() => setShowAddForm((v) => !v)}
             className="w-full h-8 text-xs"
           >
-            <Plus size={14} /> 添加自定义提醒
+            <Plus size={14} /> {t('settings.addCustomReminder')}
           </Button>
         </div>
       )}
 
       {showAddForm && (
         <div className="rounded-lg border border-border ring-0 p-3 space-y-2 bg-muted/30">
-          <h4 className="text-xs font-medium text-foreground">新提醒</h4>
+          <h4 className="text-xs font-medium text-foreground">{t('settings.newReminder')}</h4>
           <div className="flex items-center gap-2">
-            <Label className="text-xs text-muted-foreground w-12 shrink-0">名称</Label>
+            <Label className="text-xs text-muted-foreground w-12 shrink-0">{t('settings.name')}</Label>
             <Input
               value={newTaskName}
               onChange={(e) => setNewTaskName(e.target.value)}
               className="h-7 text-xs flex-1"
-              placeholder="提醒名称"
+              placeholder={t('settings.reminderNamePlaceholder')}
             />
           </div>
           <div className="flex items-center gap-2">
-            <Label className="text-xs text-muted-foreground w-12 shrink-0">图标</Label>
+            <Label className="text-xs text-muted-foreground w-12 shrink-0">{t('settings.icon')}</Label>
             <div className="flex gap-1">
               {(['sit', 'water', 'eye'] as TaskIcon[]).map((icon) => (
                 <button
@@ -381,10 +414,10 @@ export function RemindersSection() {
           </div>
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" size="sm" onClick={() => setShowAddForm(false)} className="h-7 text-xs">
-              取消
+              {t('settings.cancel')}
             </Button>
             <Button size="sm" onClick={handleAddTask} disabled={!newTaskName.trim()} className="h-7 text-xs">
-              添加
+              {t('settings.confirmAdd')}
             </Button>
           </div>
         </div>
@@ -460,15 +493,11 @@ export function GeneralSection() {
 
   return (
     <div className="space-y-1">
-      {/* Language */}
-      <div className="flex items-center justify-between py-2">
-        <div className="flex flex-col gap-0.5">
-          <Label className="flex items-center gap-1 text-sm">
-            <Globe size={14} />
-            {t('settings.language')}
-          </Label>
-          <span className="text-xs text-muted-foreground">{t('settings.languageDesc')}</span>
-        </div>
+      <SettingRow
+        label={t('settings.language')}
+        desc={t('settings.languageDesc')}
+        icon={Globe}
+      >
         <Select
           value={i18n.language}
           onValueChange={async (value) => {
@@ -492,17 +521,13 @@ export function GeneralSection() {
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </SettingRow>
 
-      {/* Theme */}
-      <div className="flex items-center justify-between py-2">
-        <div className="flex flex-col gap-0.5">
-          <Label className="flex items-center gap-1 text-sm">
-            <ThemeIcon size={14} />
-            {t('settings.theme')}
-          </Label>
-          <span className="text-xs text-muted-foreground">{t('settings.themeDesc')}</span>
-        </div>
+      <SettingRow
+        label={t('settings.theme')}
+        desc={t('settings.themeDesc')}
+        icon={ThemeIcon}
+      >
         <Select
           value={settings.theme}
           onValueChange={(value) => handleThemeSelect(value as 'light' | 'dark' | 'system')}
@@ -522,37 +547,29 @@ export function GeneralSection() {
             </SelectItem>
           </SelectContent>
         </Select>
-      </div>
+      </SettingRow>
 
       <Separator className="my-2" />
 
-      {/* Auto Unlock */}
-      <div className="flex items-center justify-between py-2">
-        <div className="flex flex-col gap-0.5">
-          <Label className="text-sm">{t('settings.autoUnlock')}</Label>
-          <span className="text-xs text-muted-foreground">{t('settings.autoUnlockDesc')}</span>
-        </div>
+      <SettingRow
+        label={t('settings.autoUnlock')}
+        desc={t('settings.autoUnlockDesc')}
+      >
         <Switch checked={settings.autoUnlock} onCheckedChange={handleAutoUnlockToggle} />
-      </div>
+      </SettingRow>
 
-      {/* Reset on Idle */}
-      <div className="flex items-center justify-between py-2">
-        <div className="flex flex-col gap-0.5">
-          <Label className="text-sm">{t('settings.resetOnIdle')}</Label>
-          <span className="text-xs text-muted-foreground">{t('settings.resetOnIdleDesc')}</span>
-        </div>
+      <SettingRow
+        label={t('settings.resetOnIdle')}
+        desc={t('settings.resetOnIdleDesc')}
+      >
         <Switch checked={settings.autoResetOnIdle} onCheckedChange={handleResetOnIdleToggle} />
-      </div>
+      </SettingRow>
 
-      {/* Idle Threshold */}
-      <div className="flex items-center justify-between py-2">
-        <div className="flex flex-col gap-0.5">
-          <Label className="flex items-center gap-1 text-sm">
-            <Timer size={14} />
-            {t('settings.idleThreshold')}
-          </Label>
-          <span className="text-xs text-muted-foreground">{t('settings.idleThresholdDesc')}</span>
-        </div>
+      <SettingRow
+        label={t('settings.idleThreshold')}
+        desc={t('settings.idleThresholdDesc')}
+        icon={Timer}
+      >
         <div className="flex items-center gap-1.5">
           <Input
             type="number"
@@ -566,16 +583,14 @@ export function GeneralSection() {
           />
           <span className="text-xs text-muted-foreground">{t('time.minutes')}</span>
         </div>
-      </div>
+      </SettingRow>
 
-      {/* Auto Start */}
-      <div className="flex items-center justify-between py-2">
-        <div className="flex flex-col gap-0.5">
-          <Label className="text-sm">{t('settings.autoStart')}</Label>
-          <span className="text-xs text-muted-foreground">{t('settings.autoStartDesc')}</span>
-        </div>
+      <SettingRow
+        label={t('settings.autoStart')}
+        desc={t('settings.autoStartDesc')}
+      >
         <Switch checked={settings.autoStart} onCheckedChange={handleAutoStartToggle} />
-      </div>
+      </SettingRow>
     </div>
   );
 }
@@ -615,16 +630,12 @@ export function AdvancedSection() {
 
   return (
     <div className="space-y-1">
-      {/* Lock Screen */}
-      <div className="flex items-center justify-between py-2">
-        <div className="flex flex-col gap-0.5">
-          <Label className="text-sm">{t('settings.lockScreen')}</Label>
-          <span className="text-xs text-muted-foreground">{t('settings.lockScreenDesc')}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Switch checked={settings.lockScreenEnabled} onCheckedChange={handleLockScreenToggle} />
-        </div>
-      </div>
+      <SettingRow
+        label={t('settings.lockScreen')}
+        desc={t('settings.lockScreenDesc')}
+      >
+        <Switch checked={settings.lockScreenEnabled} onCheckedChange={handleLockScreenToggle} />
+      </SettingRow>
 
       {settings.lockScreenEnabled && (
         <div className="flex items-center justify-between py-2 pl-4">
@@ -645,17 +656,14 @@ export function AdvancedSection() {
         </div>
       )}
 
-      {/* Strict Mode */}
-      <div className="flex items-center justify-between py-2">
-        <div className="flex flex-col gap-0.5">
-          <Label className="flex items-center gap-1 text-sm" style={{ color: 'var(--destructive)' }}>
-            <Shield size={14} />
-            {t('settings.strictMode')}
-          </Label>
-          <span className="text-xs text-muted-foreground">{t('settings.strictModeDesc')}</span>
-        </div>
+      <SettingRow
+        label={t('settings.strictMode')}
+        desc={t('settings.strictModeDesc')}
+        icon={Shield}
+        destructive
+      >
         <Switch checked={settings.strictMode} onCheckedChange={handleStrictModeToggle} />
-      </div>
+      </SettingRow>
     </div>
   );
 }
@@ -677,13 +685,13 @@ export function Settings({ isStandalone = false, initialTab }: SettingsProps) {
       <div className="sticky top-0 z-10 bg-card px-4 pt-3 pb-0">
         <TabsList variant="line" className="w-full">
           <TabsTrigger value="reminders" className="flex-1 text-xs">
-            {t('settings.myReminders')}
+            {t('settings.taskManagement')}
           </TabsTrigger>
           <TabsTrigger value="general" className="flex-1 text-xs">
             {t('settings.general')}
           </TabsTrigger>
           <TabsTrigger value="advanced" className="flex-1 text-xs">
-            {t('settings.advancedSettings')}
+            {t('settings.advanced')}
           </TabsTrigger>
         </TabsList>
       </div>

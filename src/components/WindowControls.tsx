@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Minus, X, Settings2 } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/services';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -25,14 +25,15 @@ export function WindowControls({ onOpenSettings }: { onOpenSettings?: (initialTa
     <div className="flex items-center" data-tauri-drag-region={false}>
       {/* 设置按钮 */}
       <DropdownMenu>
-        <DropdownMenuTrigger className="flex">
-          <Button variant="ghost" size="icon" tabIndex={-1}>
-            <Settings2 size={16} strokeWidth={1.5} />
-          </Button>
+        <DropdownMenuTrigger className="flex items-center justify-center rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring">
+          <Settings2 size={16} strokeWidth={1.5} />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent align="end" className="min-w-fit">
           <DropdownMenuItem onClick={() => onOpenSettings?.('reminders')}>
-            {t('settings.addReminder', { defaultValue: '添加新提醒' })}
+            {t('settings.taskManagement', { defaultValue: '提醒管理' })}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onOpenSettings?.('general')}>
+            {t('settings.general', { defaultValue: '通用设置' })}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => onOpenSettings?.('advanced')}>
             {t('settings.advanced', { defaultValue: '高级设置' })}

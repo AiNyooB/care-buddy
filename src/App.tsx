@@ -11,6 +11,7 @@ import { Settings } from '@/components/Settings';
 import { ExerciseLibrary } from '@/components/ExerciseLibrary';
 import { StatsDashboard } from '@/components/StatsDashboard';
 import { ExercisePanel } from '@/components/ExercisePanel';
+import { GridDebug } from '@/components/GridDebug';
 import { Toaster } from '@/components/ui/sonner';
 
 import { useHealthStore } from '@/store';
@@ -117,7 +118,9 @@ export default function App() {
       </header>
 
       {/* 内容区 */}
-      <main className="flex-1 overflow-y-auto px-2 pb-2">
+      <main className="relative flex-1 overflow-y-auto px-2 pb-2">
+        {/* 页面级 6 列网格调试覆盖线（z-50），相对于 main 的 var(--grid-offset) = 24px = 窗口边缘 24px */}
+        <GridDebug />
         <div className="mx-auto flex h-full min-h-0 w-full max-w-[calc(var(--grid-content)+32px)] flex-col rounded-[14px] bg-card p-4">
           {viewMode === 'main' && <Dashboard />}
           {viewMode === 'exercise' && <ExerciseLibrary />}

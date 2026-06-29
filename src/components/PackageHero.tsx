@@ -1,92 +1,62 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AnimatePresence, motion } from 'motion/react';
 import { useHealthStore } from '@/store';
-import { exercisePackages } from '@/data/exercises';
-import { Play, Clock, Dumbbell } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { exercisePackages, exercises } from '@/data/exercises';
+import { PackageBackdrop } from './PackageBackdrop';
+import { ExerciseTagCloud } from './ExerciseTagCloud';
+import { PackageChip } from './PackageChip';
 
 export function PackageHero() {
   const { t } = useTranslation();
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [hoveredPackageId, setHoveredPackageId] = useState<string | null>(null);
   const openExercisePanel = useHealthStore((s) => s.openExercisePanel);
+  const packageItemWidth = 'calc(2 * var(--grid-col) + var(--grid-gap))';
 
   return (
-    <div className="flex gap-3 flex-1">
-      {/* Hero 卡片 — 带动画 */}
-      <div className="relative flex-1 overflow-hidden rounded-2xl border border-border bg-card ring-0 h-full shadow-lg">
-        <AnimatePresence mode="wait">
-          {exercisePackages.map((pkg, i) => {
-            if (i !== selectedIndex) return null;
-            return (
-              <motion.div
-                key={pkg.id}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -16 }}
-                transition={{ duration: 0.25, ease: 'easeInOut' }}
-                className="p-4 h-full flex flex-col"
-              >
-                {/* 图标 + 名称、统计 */}
-                <div className="mb-3 flex items-center gap-3">
-                  <div className="flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                    <Dumbbell size={20} />
-                  </div>
-                  <div>
-                    <h3 className="text-base leading-6 text-foreground">
-                      {pkg.name}
-                    </h3>
-                    <span className="text-xs font-medium leading-4 text-primary">
-                      {pkg.duration}{t('time.minutes')} · {pkg.exercises.length}{t('exercise.repetitions')}
-                    </span>
-                  </div>
-                </div>
-
-                {/* 描述 */}
-                <p className="flex-1 text-sm leading-5 text-muted-foreground">
-                  {pkg.description}
-                </p>
-
-                {/* 底行：频率 + CTA */}
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1 text-xs font-medium leading-4 text-muted-foreground">
-                    <Clock size={14} />
-                    {pkg.recommendedFrequency}
-                  </span>
-                  <Button
-                    variant="secondary"
-                    className="h-10 rounded-full px-4 text-sm"
-                    onClick={() => openExercisePanel(pkg.id)}
-                  >
-                    <Play size={14} className="mr-1" />
-                    {t('exercise.startPackage')}
-                  </Button>
-                </div>
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
+    <div className="relative h-[270px] shrink-0 rounded-[18px]">
+      <div className="absolute inset-0 overflow-hidden rounded-[18px]">
+        <div className="absolute inset-0 z-0">
+          <ExerciseTagCloud
+            exercises={exercises}
+            packages={exercisePackages}
+            currentPackageId={hoveredPackageId}
+          />
+          <PackageBackdrop />
+        </div>
       </div>
 
-      {/* 选择按钮 — 竖排 3 个，仅选中态高亮 */}
-      <div className="flex flex-col justify-center gap-3">
-        {exercisePackages.map((pkg, i) => {
-          const letter = pkg.name.charAt(0);
-          return (
-            <button
-              key={pkg.id}
-              onClick={() => setSelectedIndex(i)}
-              className={`flex size-11 items-center justify-center rounded-xl text-sm font-bold transition-colors duration-200 ${
-                i === selectedIndex
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
-              }`}
-              title={pkg.name}
-            >
-              {letter}
-            </button>
-          );
-        })}
+      <h2 className="absolute top-0 left-0 z-20 text-type-card-title font-semibold text-foreground drop-shadow-sm">
+        {t('exercise.packages')}
+      </h2>
+
+      <div
+        className={[
+          'pointer-events-none absolute left-0 z-20 rounded-md bg-card/75 p-2 transition-opacity duration-200',
+          hoveredPackageId ? 'opacity-100' : 'opacity-0',
+        ].join(' ')}
+        style={{ bottom: '68px', width: 'var(--grid-content)' }}
+      >
+        <p className="line-clamp-2 text-type-caption leading-tight text-muted-foreground">
+          {exercisePackages.find((p) => p.id === hoveredPackageId)?.description ?? ''}
+        </p>
+      </div>
+
+      <div
+        className="absolute bottom-0 left-0 z-20 h-[90px]"
+        style={{ width: 'var(--grid-content)' }}
+      >
+        <div className="flex h-full items-end gap-3">
+          {exercisePackages.map((pkg) => (
+            <div key={pkg.id} className="shrink-0" style={{ width: packageItemWidth }}>
+              <PackageChip
+                pkg={pkg}
+                onStart={openExercisePanel}
+                onHover={() => setHoveredPackageId(pkg.id)}
+                onLeave={() => setHoveredPackageId(null)}
+              />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

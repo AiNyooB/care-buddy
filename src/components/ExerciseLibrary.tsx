@@ -4,10 +4,11 @@ import { useHealthStore } from '../store';
 import { exercises, categoryNames, priorityLabels } from '../data/exercises';
 import { guidedExerciseConfigs } from '../data/guided-configs';
 import type { Exercise, ExerciseCategory } from '../types';
-import { Play, Target, CheckCircle, Headphones, DiamondPercent, Diamond, CircleDot, Plus } from './Icons';
+import { Play, Target, CheckCircle, Headphones, DiamondPercent, Diamond, CircleDot, Plus, Clock } from './Icons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Separator } from '@/components/ui/separator';
 import {
   Dialog,
   DialogContent,
@@ -121,20 +122,18 @@ function ExerciseCard({ exercise, onClick }: { exercise: Exercise; onClick: () =
   const priority = priorityLabels[exercise.priority];
   return (
     <Card
-      className="h-[64px] cursor-pointer border border-border p-2 gap-0 ring-0 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring active:bg-muted/50"
+      className="h-[60px] cursor-pointer border border-border p-2 gap-0 ring-0 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring active:bg-muted/50"
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
       role="button"
       tabIndex={0}
     >
-      <CardContent className="flex flex-col p-0">
+      <CardContent className="flex flex-col gap-1 p-0">
         {/* 顶行：标题 + 优先级标签 */}
         <div className="flex items-start justify-between">
-          <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
-            <h4 className="truncate text-type-card-title font-semibold text-foreground">
-              {exercise.name}
-            </h4>
-          </div>
+          <h4 className="min-w-0 flex-1 truncate text-type-card-title font-semibold text-foreground">
+            {exercise.name}
+          </h4>
           <span className="ml-2 shrink-0 flex items-center" style={{ color: priority.color }}>
             {exercise.priority === 'core' && <DiamondPercent size={14} aria-label="必做" />}
             {exercise.priority === 'strong' && <Diamond size={14} aria-label="推荐" />}
@@ -142,8 +141,8 @@ function ExerciseCard({ exercise, onClick }: { exercise: Exercise; onClick: () =
             {exercise.priority === 'supplement' && <Plus size={14} aria-label="补充" />}
           </span>
         </div>
-        {/* 描述 — 单行，距标题8px */}
-        <p className="mt-2 line-clamp-1 text-type-body text-muted-foreground">
+        {/* 描述 — 单行，距标题4px */}
+        <p className="line-clamp-1 text-type-caption text-muted-foreground">
           {exercise.description}
         </p>
       </CardContent>
@@ -173,30 +172,34 @@ export function ExerciseLibrary() {
   const categoryTabLabels: Record<ExerciseCategory, string> = categoryNames;
 
   return (
-    <div className="flex h-full flex-col gap-3">
+    <div className="flex h-full flex-col">
       {/* 套餐 Hero — 替换旧的 PackageCard 网格 */}
       <PackageHero />
 
-      {/* 分类标签 */}
-      <Tabs value={selectedCategory} onValueChange={(v) => setSelectedCategory(v as ExerciseCategory)}>
-        <TabsList variant="line" className="gap-4">
-          {CATEGORIES.map((cat) => (
-            <TabsTrigger key={cat} value={cat} className="border-0">
-              {categoryTabLabels[cat]}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      <Separator className="my-3" style={{ width: 'var(--grid-content)' }} />
 
-      {/* 运动卡片 — 2 列网格 */}
-      <div className="grid grid-cols-2 gap-3 content-start">
-        {filteredExercises.map((exercise) => (
-          <ExerciseCard
-            key={exercise.id}
-            exercise={exercise}
-            onClick={() => setSelectedExercise(exercise)}
-          />
-        ))}
+      <div className="flex min-h-[314px] flex-1 flex-col gap-2">
+        {/* 分类标签 */}
+        <Tabs value={selectedCategory} onValueChange={(v) => setSelectedCategory(v as ExerciseCategory)}>
+          <TabsList variant="line" className="gap-4">
+            {CATEGORIES.map((cat) => (
+              <TabsTrigger key={cat} value={cat} className="border-0">
+                {categoryTabLabels[cat]}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+
+        {/* 运动卡片 — 2 列网格 */}
+        <div className="grid grid-cols-2 gap-3 content-start flex-1">
+          {filteredExercises.map((exercise) => (
+            <ExerciseCard
+              key={exercise.id}
+              exercise={exercise}
+              onClick={() => setSelectedExercise(exercise)}
+            />
+          ))}
+        </div>
       </div>
 
       {selectedExercise && (

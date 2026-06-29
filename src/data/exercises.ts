@@ -613,7 +613,7 @@ export const exercisePackages: ExercisePackage[] = [
   },
   {
     id: 'package-deep',
-    name: '午休深度修复包',
+    name: '深度修复包',
     description: '午休或下班后，有充裕时间，适合专业级深度修复，覆盖全身主要肌群',
     duration: 13,
     exercises: [

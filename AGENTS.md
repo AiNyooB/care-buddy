@@ -18,6 +18,7 @@ Tauri 2 / React 19 / TypeScript 6 / Zustand 5 / Tailwind 4 / shadcn v4 (base-nov
 - **Rust 后端** — 主要逻辑集中在 `src-tauri/src/lib.rs`（timer、idle 检测、锁屏、托盘菜单、通知）
 - **UI 组件** — shadcn v4（Button, Card, Switch, Input, Select, Dialog, DropdownMenu, Tabs, Badge, Separator, Label, Tooltip, Progress, ScrollArea, Toggle, Checkbox, Collapsible, Pagination, Carousel），位于 `src/components/ui/`
 - **卡片边框** — 父容器有 `overflow-y-auto` 时，Card 需用 `border border-border ring-0` 替代默认 `ring-1 ring-foreground/10` 避免 ring 被裁切
+- **圆角 + overflow 分离** — 父层不能 `overflow-hidden rounded-X` 一把抓，否则子元素 shadow / border 一起被裁。背景单独包一层 `overflow-hidden rounded-X` 自裁，承载子元素走外层直接子节点。
 - **样式** — `global.css` 入口：`@import "tailwindcss"` + `@import "shadcn/tailwind.css"` + `@import "tw-animate-css"` + `@import "@fontsource-variable/geist"`；使用 `@tailwindcss/vite` 插件；CSS 变量主题（oklch blue accent）；字体 Geist Variable
 - **窗口** — 492×696，无边框（`decorations: false`），`withGlobalTauri: true`，`resizable: false`
 - **布局** — 无侧边栏，顶部标题栏 `--titlebar-height: 48px`，主内容卡片 `p-4`，使用 flex 布局自适应高度（内容容器需加 `h-full flex flex-col min-h-0`，滚动区域加 `flex-1 min-h-0 overflow-y-auto`）
