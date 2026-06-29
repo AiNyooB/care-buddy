@@ -373,10 +373,10 @@ export function CountdownSection() {
             className="absolute flex items-center justify-center gap-1 -translate-x-1/2"
             style={{ top: '160px', left: '50%', width: '192px' }}
           >
-            <span className="text-type-body text-muted-foreground">
+            <span className="shrink-0 text-type-body text-muted-foreground">
               {t('dashboard.upcoming', { defaultValue: '当前:' })}
             </span>
-            <span className="text-type-body text-foreground">
+            <span className="min-w-0 max-w-[140px] truncate text-type-body text-foreground">
               {t('taskNames.' + upcomingTask.task.id, { defaultValue: upcomingTask.task.title })}
             </span>
           </div>
@@ -433,7 +433,7 @@ export function CountdownSection() {
                 </div>
                 {/* 第二行：任务名 + 百分比/已暂停（互显） */}
                 <div className="flex items-center justify-between">
-                  <span className="text-type-body text-muted-foreground leading-[var(--type-body-lh)]">
+                  <span className="min-w-0 flex-1 truncate text-type-body text-muted-foreground leading-[var(--type-body-lh)]">
                     {t('taskNames.' + task.id, { defaultValue: task.title })}
                   </span>
                   {taskPaused ? (

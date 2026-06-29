@@ -56,7 +56,7 @@ function ExerciseDetailModal({ exercise, onClose, onComplete }: ExerciseDetailMo
             <span className="rounded-full px-2 py-[1px] text-type-badge font-medium text-white" style={{ backgroundColor: priority.color }}>
               {priority.label}
             </span>
-            <DialogTitle>{exercise.name}</DialogTitle>
+            <DialogTitle className="truncate">{exercise.name}</DialogTitle>
           </div>
         </DialogHeader>
 

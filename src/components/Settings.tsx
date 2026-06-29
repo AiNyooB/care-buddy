@@ -4,13 +4,23 @@ import { useHealthStore } from '../store';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { setAutoStart, saveSettingsToBackend, emitSettingsUpdated, syncTasks, setIdleThreshold, updateTrayLanguage } from '../services';
-import { Shield, Sun, Moon, Monitor, Globe, Clock, Timer, GlassWater, Eye, Plus, X, Trash2, ChevronRight, Bell } from 'lucide-react';
+import { Shield, Sun, Moon, Monitor, Globe, Plus, X, Bell, Trash2, Timer, LockOpen, RefreshCw, Power, type LucideIcon } from 'lucide-react';
+import { ToggleGroup } from '@base-ui/react/toggle-group';
+import { Toggle } from '@base-ui/react/toggle';
+import { NumberField } from '@base-ui/react/number-field';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import {
   Select,
   SelectTrigger,
@@ -20,24 +30,22 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from '@/components/ui/collapsible';
-import type { Task, TaskIcon, ScheduleType } from '../types';
+import { TaskIcon } from './Icons';
+import type { Task, ScheduleType, AppSettings } from '../types';
 
 const LOCALES = [
   { code: 'zh-CN', name: '简体中文' },
   { code: 'en-US', name: 'English' },
 ];
 
+const THEME_OPTIONS = [
+  { value: 'light' as const, icon: Sun, labelKey: 'settings.light' },
+  { value: 'dark' as const, icon: Moon, labelKey: 'settings.dark' },
+  { value: 'system' as const, icon: Monitor, labelKey: 'settings.system' },
+];
+
 const DEFAULT_TASK_IDS = new Set(['sit', 'water', 'eye']);
 const MAX_TASKS = 12; // 4 页 × 3 个/页
-
-function TaskIcon({ icon, size = 14 }: { icon: string; size?: number }) {
-  switch (icon) {
-    case 'eye': return <Eye size={size} />;
-    case 'water': return <GlassWater size={size} />;
-    default: return <Clock size={size} />;
-  }
-}
 
 function timeDiffInMinutes(a: string, b: string): number {
   const [ah, am] = a.split(':').map(Number);
@@ -60,10 +68,8 @@ function MergeWarning({ current, all, threshold }: MergeWarningProps) {
       return Math.abs(other.interval - current.interval) <= threshold;
     }
 
-    if (current.scheduleType === 'daily' && current.dailyTimes.length > 0 && other.dailyTimes.length > 0) {
-      return current.dailyTimes.some((t) =>
-        other.dailyTimes.some((ot) => timeDiffInMinutes(t, ot) <= threshold)
-      );
+    if (current.scheduleType === 'daily' && current.dailyTime && other.dailyTime) {
+      return timeDiffInMinutes(current.dailyTime, other.dailyTime) <= threshold;
     }
 
     return false;
@@ -87,7 +93,7 @@ function MergeWarning({ current, all, threshold }: MergeWarningProps) {
 interface SettingRowProps {
   label: ReactNode;
   desc?: ReactNode;
-  icon?: typeof Globe;
+  icon?: LucideIcon;
   destructive?: boolean;
   children: ReactNode;
 }
@@ -113,8 +119,31 @@ function SettingRow({ label, desc, icon: Icon, destructive, children }: SettingR
 }
 
 // ============================================================================
-// 我的提醒 Tab
+// 提醒管理 Tab
 // ============================================================================
+
+interface EditingState {
+  mode: 'new' | 'edit';
+  taskId?: string;
+  draft: Task;
+}
+
+function createEmptyTask(): Task {
+  return {
+    id: `custom-${Date.now()}`,
+    title: '',
+    desc: '',
+    interval: 45,
+    enabled: true,
+    icon: 'exercise',
+    lockDuration: 60,
+    autoResetOnIdle: false,
+    preNotificationSeconds: 10,
+    snoozeMinutes: 5,
+    scheduleType: 'interval',
+    dailyTime: null,
+  };
+}
 
 export function RemindersSection() {
   const { t } = useTranslation();
@@ -125,10 +154,7 @@ export function RemindersSection() {
   const removeTask = useHealthStore((s) => s.removeTask);
   const addTask = useHealthStore((s) => s.addTask);
 
-  const [inputValues, setInputValues] = useState<Record<string, string>>({});
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newTaskName, setNewTaskName] = useState('');
-  const [newTaskIcon, setNewTaskIcon] = useState<TaskIcon>('sit');
+  const [editing, setEditing] = useState<EditingState | null>(null);
 
   // 提醒数量达到上限时通知用户
   const atLimit = tasks.length >= MAX_TASKS;
@@ -140,85 +166,22 @@ export function RemindersSection() {
     }
   }, [atLimit, t]);
 
-  const makeInputKey = (taskId: string, field: string) => `${taskId}-${field}`;
-
-  const handleNumBlur = (taskId: string, key: string, min: number, max: number, fallback: number, field: keyof Task) => {
-    const raw = inputValues[key];
-    if (raw === undefined) return;
-    const num = Math.max(min, Math.min(max, parseInt(raw, 10) || fallback));
-    updateTask(taskId, { [field]: num } as Partial<Task>);
-    setInputValues((prev) => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
+  const handleSave = (draft: Task) => {
+    if (editing?.mode === 'new') {
+      addTask(draft);
+    } else if (editing?.mode === 'edit' && editing.taskId) {
+      updateTask(editing.taskId, draft);
+    }
     syncTasks(useHealthStore.getState().tasks);
+    setEditing(null);
   };
 
-  const numField = (
-    taskId: string,
-    field: keyof Task,
-    value: number,
-    min: number,
-    max: number,
-    fallback: number,
-    suffix: string,
-    step?: number,
-  ) => {
-    const key = makeInputKey(taskId, String(field));
-    const displayValue = key in inputValues ? inputValues[key] : String(value);
-    return (
-      <div className="flex items-center gap-1.5">
-        <Input
-          type="number"
-          inputMode="numeric"
-          min={min}
-          max={max}
-          step={step}
-          value={displayValue}
-          onChange={(e) => setInputValues((prev) => ({ ...prev, [key]: e.target.value }))}
-          onFocus={() => {
-            if (!(key in inputValues)) {
-              setInputValues((prev) => ({ ...prev, [key]: String(value) }));
-            }
-          }}
-          onBlur={() => handleNumBlur(taskId, key, min, max, fallback, field)}
-          className="h-7 w-14 text-center text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-        />
-        <span className="text-xs text-muted-foreground">{suffix}</span>
-      </div>
-    );
-  };
-
-  const handleAddTime = (taskId: string) => {
-    const task = useHealthStore.getState().tasks.find((t) => t.id === taskId);
-    if (!task) return;
-    updateTask(taskId, { dailyTimes: [...task.dailyTimes, '09:00'] });
-    syncTasks(useHealthStore.getState().tasks);
-  };
-
-  const handleRemoveTime = (taskId: string, index: number) => {
-    const task = useHealthStore.getState().tasks.find((t) => t.id === taskId);
-    if (!task) return;
-    updateTask(taskId, { dailyTimes: task.dailyTimes.filter((_, i) => i !== index) });
-    syncTasks(useHealthStore.getState().tasks);
-  };
-
-  const handleTimeChange = (taskId: string, index: number, value: string) => {
-    const task = useHealthStore.getState().tasks.find((t) => t.id === taskId);
-    if (!task) return;
-    const newTimes = [...task.dailyTimes];
-    newTimes[index] = value;
-    updateTask(taskId, { dailyTimes: newTimes });
-    syncTasks(useHealthStore.getState().tasks);
-  };
-
-  const handleScheduleTypeChange = (taskId: string, value: ScheduleType) => {
-    updateTask(taskId, {
-      scheduleType: value,
-      dailyTimes: value === 'interval' ? [] : ['09:00'],
-    });
-    syncTasks(useHealthStore.getState().tasks);
+  const handleDelete = () => {
+    if (editing?.mode === 'edit' && editing.taskId) {
+      removeTask(editing.taskId);
+      syncTasks(useHealthStore.getState().tasks);
+    }
+    setEditing(null);
   };
 
   const handleToggle = (taskId: string) => {
@@ -226,202 +189,388 @@ export function RemindersSection() {
     syncTasks(useHealthStore.getState().tasks);
   };
 
-  const handleDeleteTask = (taskId: string) => {
-    removeTask(taskId);
-    syncTasks(useHealthStore.getState().tasks);
-  };
-
-  const handleAddTask = () => {
-    const newTask: Task = {
-      id: `custom-${Date.now()}`,
-      title: newTaskName,
-      desc: `${newTaskName}提醒`,
-      interval: 45,
-      enabled: true,
-      icon: newTaskIcon,
-      lockDuration: 60,
-      autoResetOnIdle: false,
-      preNotificationSeconds: 10,
-      snoozeMinutes: 5,
-      scheduleType: 'interval',
-      dailyTimes: [],
-    };
-    addTask(newTask);
-    syncTasks(useHealthStore.getState().tasks);
-    setShowAddForm(false);
-    setNewTaskName('');
-    setNewTaskIcon('sit');
-  };
-
   return (
-    <div className="space-y-3">
-      <div className="space-y-3">
+    <>
+      <div className="grid grid-cols-2 gap-2">
+        <AddReminderCard
+          disabled={atLimit}
+          onClick={() => {
+            if (!atLimit) setEditing({ mode: 'new', draft: createEmptyTask() });
+          }}
+        />
         {tasks.map((task) => {
           const isDefault = DEFAULT_TASK_IDS.has(task.id);
           return (
-            <Card key={task.id} className="border border-border ring-0">
-              <Collapsible defaultOpen={false}>
-                <CardContent className="p-3">
-                  <div className="flex items-center justify-between">
-                    <CollapsibleTrigger render={<div />} className="flex items-center gap-2 min-w-0 flex-1">
-                      <ChevronRight size={14} className="-ml-0.5 shrink-0 transition-transform data-open:rotate-90" />
-                      <TaskIcon icon={task.icon} />
-                      <span className="text-sm font-medium text-foreground truncate">{task.title}</span>
-                      {isDefault && (
-                        <Badge variant="secondary" className="text-[10px] h-4 px-1.5 shrink-0">
-                          {t('settings.defaultReminder')}
-                        </Badge>
-                      )}
-                    </CollapsibleTrigger>
-                    <Switch
-                      checked={task.enabled}
-                      onCheckedChange={(_, details) => { details.event.stopPropagation(); handleToggle(task.id); }}
-                    />
-                  </div>
-                </CardContent>
-
-                <CollapsiblePanel keepMounted>
-                  <CardContent className="p-3 pt-0 space-y-2 border-t border-border">
-                    {!isDefault && (
-                      <div className="flex items-center gap-2">
-                        <Label className="text-xs text-muted-foreground w-12 shrink-0">{t('settings.scheduleType')}</Label>
-                        <Select
-                          value={task.scheduleType}
-                          onValueChange={(v) => handleScheduleTypeChange(task.id, v as ScheduleType)}
-                        >
-                          <SelectTrigger className="h-7 w-24">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="interval">{t('settings.interval')}</SelectItem>
-                            <SelectItem value="daily">{t('settings.fixedTime')}</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-
-                    {task.scheduleType === 'interval' ? (
-                      <div className="flex items-center gap-2">
-                        <Label className="text-xs text-muted-foreground w-12 shrink-0">{t('settings.interval')}</Label>
-                        {numField(task.id, 'interval', task.interval, 5, 180, 5, t('time.minutes'), 5)}
-                      </div>
-                    ) : (
-                      <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground w-12">{t('settings.time')}</Label>
-                        {task.dailyTimes.map((time, i) => (
-                          <div key={i} className="flex items-center gap-1 ml-12">
-                            <Input
-                              type="time"
-                              value={time}
-                              onChange={(e) => handleTimeChange(task.id, i, e.target.value)}
-                              className="h-7 w-20 text-xs"
-                            />
-                            <button
-                              onClick={() => handleRemoveTime(task.id, i)}
-                              className="flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors"
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
-                        ))}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleAddTime(task.id)}
-                          className="h-6 text-xs ml-12 text-muted-foreground hover:text-foreground"
-                        >
-                          <Plus size={12} /> {t('settings.addTime')}
-                        </Button>
-                      </div>
-                    )}
-
-                    {settings.lockScreenEnabled && (
-                      <MergeWarning current={task} all={tasks} threshold={settings.mergeThreshold} />
-                    )}
-
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs text-muted-foreground w-12 shrink-0">{t('settings.preNotify')}</Label>
-                      {numField(task.id, 'preNotificationSeconds', task.preNotificationSeconds, 0, 120, 0, t('settings.seconds'), 5)}
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs text-muted-foreground w-12 shrink-0">{t('settings.lockDuration')}</Label>
-                      {numField(task.id, 'lockDuration', task.lockDuration, 10, 600, 60, t('settings.seconds'), 10)}
-                    </div>
-
-                    {!isDefault && (
-                      <div className="pt-1">
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleDeleteTask(task.id)}
-                          className="h-7 text-xs"
-                        >
-                          <Trash2 size={12} /> {t('settings.deleteReminder')}
-                        </Button>
-                      </div>
-                    )}
-                  </CardContent>
-                </CollapsiblePanel>
-              </Collapsible>
-            </Card>
+            <ReminderSummaryCard
+              key={task.id}
+              task={task}
+              isDefault={isDefault}
+              onClick={() =>
+                setEditing({ mode: 'edit', taskId: task.id, draft: { ...task } })
+              }
+              onToggle={() => handleToggle(task.id)}
+            />
           );
         })}
       </div>
 
-      {!atLimit && (
-        <div className="pt-1">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowAddForm((v) => !v)}
-            className="w-full h-8 text-xs"
-          >
-            <Plus size={14} /> {t('settings.addCustomReminder')}
-          </Button>
-        </div>
-      )}
+      <ReminderEditorDialog
+        editing={editing}
+        onClose={() => setEditing(null)}
+        onSave={handleSave}
+          onDelete={
+            editing?.mode === 'edit' && editing.taskId && !DEFAULT_TASK_IDS.has(editing.taskId)
+              ? handleDelete
+              : undefined
+          }
+        allTasks={tasks}
+        settings={settings}
+      />
+    </>
+  );
+}
 
-      {showAddForm && (
-        <div className="rounded-lg border border-border ring-0 p-3 space-y-2 bg-muted/30">
-          <h4 className="text-xs font-medium text-foreground">{t('settings.newReminder')}</h4>
-          <div className="flex items-center gap-2">
-            <Label className="text-xs text-muted-foreground w-12 shrink-0">{t('settings.name')}</Label>
-            <Input
-              value={newTaskName}
-              onChange={(e) => setNewTaskName(e.target.value)}
-              className="h-7 text-xs flex-1"
-              placeholder={t('settings.reminderNamePlaceholder')}
+function AddReminderCard({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <Card
+      className={cn(
+        'cursor-pointer border border-dashed p-0 ring-0 rounded-[10px] transition-colors hover:bg-muted/40',
+        disabled && 'pointer-events-none opacity-50',
+      )}
+      onClick={onClick}
+    >
+      <CardContent className="flex h-full flex-col items-center justify-center gap-1 p-3 text-muted-foreground">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
+          <Plus size={16} />
+        </div>
+        <span className="text-type-body font-medium">{t('settings.addCustomReminder')}</span>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ReminderSummaryCard({
+  task,
+  isDefault,
+  onClick,
+  onToggle,
+}: {
+  task: Task;
+  isDefault: boolean;
+  onClick: () => void;
+  onToggle: () => void;
+}) {
+  const { t } = useTranslation();
+
+  const handleCardClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('[data-reminder-switch]')) {
+      return;
+    }
+    onClick();
+  };
+
+  return (
+    <Card
+      className={cn(
+        'cursor-pointer border border-border p-0 ring-0 rounded-[10px] transition-colors hover:bg-muted/40',
+        !task.enabled && 'opacity-60',
+      )}
+      onClick={handleCardClick}
+    >
+      <CardContent className="p-3">
+        {/* row 1: icon 容器 + switch (Figma: y=12-44, h=32) */}
+        <div className="flex items-center justify-between">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
+            <TaskIcon icon={task.icon} size={16} />
+          </div>
+          <div data-reminder-switch>
+            <Switch
+              checked={task.enabled}
+              onCheckedChange={onToggle}
+              className="shrink-0"
             />
           </div>
-          <div className="flex items-center gap-2">
-            <Label className="text-xs text-muted-foreground w-12 shrink-0">{t('settings.icon')}</Label>
-            <div className="flex gap-1">
-              {(['sit', 'water', 'eye'] as TaskIcon[]).map((icon) => (
-                <button
-                  key={icon}
-                  onClick={() => setNewTaskIcon(icon)}
-                  className={`flex size-7 items-center justify-center rounded ${
-                    newTaskIcon === icon
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-foreground hover:bg-muted/80'
-                  } transition-colors`}
-                >
-                  <TaskIcon icon={icon} size={14} />
-                </button>
-              ))}
-            </div>
+        </div>
+
+        {/* row 2: title + badge / subtitle (Figma: y=49-93, h=44, gap 5 from row 1) */}
+        <div className="mt-[5px]">
+          {/* line 1: title + badge (h=22, gap 12) */}
+          <div className="flex h-[22px] items-center gap-3">
+            <span className="min-w-0 max-w-[140px] truncate text-type-card-title font-semibold leading-[var(--type-card-title-lh)] text-foreground">
+              {task.title}
+            </span>
+            {isDefault && (
+              <Badge className="h-5 shrink-0 rounded-full bg-muted px-2 text-type-badge font-medium leading-[var(--type-badge-lh)] text-secondary-foreground">
+                {t('settings.defaultReminder')}
+              </Badge>
+            )}
           </div>
-          <div className="flex justify-end gap-2 pt-1">
-            <Button variant="ghost" size="sm" onClick={() => setShowAddForm(false)} className="h-7 text-xs">
-              {t('settings.cancel')}
-            </Button>
-            <Button size="sm" onClick={handleAddTask} disabled={!newTaskName.trim()} className="h-7 text-xs">
-              {t('settings.confirmAdd')}
-            </Button>
+          {/* line 2: subtitle (h=18, gap 4 from line 1) */}
+          <div className="mt-1 text-type-caption leading-[var(--type-caption-lh)] text-muted-foreground">
+            {task.scheduleType === 'daily' && task.dailyTime
+              ? t('settings.reminderSubtitleDaily', { time: task.dailyTime })
+              : t('settings.reminderSubtitleInterval', { interval: task.interval })}
           </div>
         </div>
-      )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ReminderEditorDialog({
+  editing,
+  onClose,
+  onSave,
+  onDelete,
+  allTasks,
+  settings,
+}: {
+  editing: EditingState | null;
+  onClose: () => void;
+  onSave: (draft: Task) => void;
+  onDelete?: () => void;
+  allTasks: Task[];
+  settings: AppSettings;
+}) {
+  const { t } = useTranslation();
+  const [draft, setDraft] = useState<Task | null>(null);
+
+  useEffect(() => {
+    setDraft(editing ? { ...editing.draft } : null);
+  }, [editing]);
+
+  const updateDraft = (patch: Partial<Task>) => {
+    setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
+  };
+
+  if (!editing || !draft) return null;
+
+  return (
+    <Dialog open={!!editing} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-[440px]">
+        <DialogHeader>
+          <DialogTitle>
+            {editing.mode === 'new' ? t('settings.newReminder') : t('settings.editReminder')}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          {/* 名称 + 图标（图标只读，不可选） */}
+          <div className="flex items-center gap-2">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
+              <TaskIcon icon={draft.icon} size={14} />
+            </div>
+            <Input
+              value={draft.title}
+              onChange={(e) =>
+                updateDraft({ title: e.target.value, desc: `${e.target.value}提醒` })
+              }
+              placeholder={t('settings.reminderNamePlaceholder')}
+              className="h-8 text-sm"
+            />
+          </div>
+
+          <Separator />
+
+          <SettingRow label={t('settings.scheduleType')}>
+            <ToggleGroup
+              value={[draft.scheduleType]}
+              onValueChange={(values) => {
+                const v = values[0] as ScheduleType | undefined;
+                if (!v) return;
+                updateDraft({
+                  scheduleType: v,
+                  dailyTime: v === 'interval' ? null : draft.dailyTime ?? '09:00',
+                });
+              }}
+              className="flex rounded-md bg-muted p-0.5"
+            >
+              <Toggle
+                value="interval"
+                className="flex-1 whitespace-nowrap rounded-sm px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground data-pressed:bg-background data-pressed:text-foreground data-pressed:shadow-sm"
+              >
+                {t('settings.interval')}
+              </Toggle>
+              <Toggle
+                value="daily"
+                className="flex-1 whitespace-nowrap rounded-sm px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground data-pressed:bg-background data-pressed:text-foreground data-pressed:shadow-sm"
+              >
+                {t('settings.fixedTime')}
+              </Toggle>
+            </ToggleGroup>
+          </SettingRow>
+
+          {draft.scheduleType === 'interval' ? (
+            <SettingRow label={t('settings.interval')}>
+              <NumField
+                value={draft.interval}
+                min={5}
+                max={180}
+                step={5}
+                suffix={t('time.minutes')}
+                onCommit={(v) => updateDraft({ interval: v })}
+              />
+            </SettingRow>
+          ) : (
+            <SettingRow label={t('settings.time')}>
+              <DailyTimeField
+                value={draft.dailyTime}
+                onChange={(v) => updateDraft({ dailyTime: v })}
+              />
+            </SettingRow>
+          )}
+
+          {settings.lockScreenEnabled && draft.scheduleType === 'interval' && (
+            <MergeWarning current={draft} all={allTasks} threshold={settings.mergeThreshold} />
+          )}
+
+          <SettingRow label={t('settings.preNotify')}>
+            <NumField
+              value={draft.preNotificationSeconds}
+              min={0}
+              max={120}
+              step={5}
+              suffix={t('settings.seconds')}
+              onCommit={(v) => updateDraft({ preNotificationSeconds: v })}
+            />
+          </SettingRow>
+
+          <SettingRow label={t('settings.lockDuration')}>
+            <NumField
+              value={draft.lockDuration}
+              min={10}
+              max={600}
+              step={10}
+              suffix={t('settings.seconds')}
+              onCommit={(v) => updateDraft({ lockDuration: v })}
+            />
+          </SettingRow>
+        </div>
+
+        <DialogFooter className="!flex-row !justify-between">
+          {onDelete ? (
+            <Button variant="destructive" size="sm" onClick={onDelete}>
+              <Trash2 size={14} /> {t('settings.deleteReminder')}
+            </Button>
+          ) : (
+            <div />
+          )}
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              {t('settings.cancel')}
+            </Button>
+            <Button size="sm" onClick={() => onSave(draft)} disabled={!draft.title.trim()}>
+              {t('settings.save')}
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function NumField({
+  value,
+  min,
+  max,
+  step,
+  suffix,
+  onCommit,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  suffix: string;
+  onCommit: (v: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <Input
+        type="number"
+        inputMode="numeric"
+        min={min}
+        max={max}
+        step={step}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          const num = Math.max(min, Math.min(max, parseInt(draft, 10) || value));
+          setDraft(String(num));
+          onCommit(num);
+        }}
+        className="h-7 w-16 text-center text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+      />
+      <span className="text-xs text-muted-foreground">{suffix}</span>
+    </div>
+  );
+}
+
+function DailyTimeField({
+  value,
+  onChange,
+}: {
+  value: string | null;
+  onChange: (v: string) => void;
+}) {
+  const [hour, minute] = (value ?? '09:00').split(':');
+  const h = Number(hour);
+  const m = Number(minute);
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <NumberField.Root
+        value={h}
+        min={0}
+        max={23}
+        onValueChange={(v) => onChange(`${String(v).padStart(2, '0')}:${minute}`)}
+      >
+        <NumberField.Input
+          className={cn(
+            'h-7 w-16 rounded-md border border-input bg-transparent',
+            'px-2.5 py-1 text-center text-xs',
+            'transition-colors outline-none',
+            'placeholder:text-muted-foreground',
+            'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+            'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
+            'aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20',
+            'dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40',
+            '[appearance:textfield]',
+            '[&::-webkit-outer-spin-button]:appearance-none',
+            '[&::-webkit-inner-spin-button]:appearance-none',
+          )}
+        />
+      </NumberField.Root>
+      <span className="text-sm text-muted-foreground">:</span>
+      <NumberField.Root
+        value={m}
+        min={0}
+        max={59}
+        onValueChange={(v) => onChange(`${hour}:${String(v).padStart(2, '0')}`)}
+      >
+        <NumberField.Input
+          className={cn(
+            'h-7 w-16 rounded-md border border-input bg-transparent',
+            'px-2.5 py-1 text-center text-xs',
+            'transition-colors outline-none',
+            'placeholder:text-muted-foreground',
+            'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+            'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
+            'aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20',
+            'dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40',
+            '[appearance:textfield]',
+            '[&::-webkit-outer-spin-button]:appearance-none',
+            '[&::-webkit-inner-spin-button]:appearance-none',
+          )}
+        />
+      </NumberField.Root>
     </div>
   );
 }
@@ -510,8 +659,10 @@ export function GeneralSection() {
             await updateTrayLanguage(value).catch(console.error);
           }}
         >
-          <SelectTrigger className="w-[90px]">
-            <SelectValue />
+          <SelectTrigger className="w-[100px]">
+            <SelectValue>
+              {(value) => LOCALES.find((l) => l.code === value)?.name ?? value}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {LOCALES.map((l) => (
@@ -532,19 +683,31 @@ export function GeneralSection() {
           value={settings.theme}
           onValueChange={(value) => handleThemeSelect(value as 'light' | 'dark' | 'system')}
         >
-          <SelectTrigger className="w-[90px]">
-            <SelectValue />
+          <SelectTrigger className="w-[100px]">
+            <SelectValue>
+              {(value) => {
+                const opt = THEME_OPTIONS.find((o) => o.value === value);
+                if (!opt) return value;
+                const Icon = opt.icon;
+                return (
+                  <span className="flex items-center gap-1.5">
+                    <Icon size={12} /> {t(opt.labelKey)}
+                  </span>
+                );
+              }}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="light">
-              <span className="flex items-center gap-1.5"><Sun size={12} />{t('settings.light')}</span>
-            </SelectItem>
-            <SelectItem value="dark">
-              <span className="flex items-center gap-1.5"><Moon size={12} />{t('settings.dark')}</span>
-            </SelectItem>
-            <SelectItem value="system">
-              <span className="flex items-center gap-1.5"><Monitor size={12} />{t('settings.system')}</span>
-            </SelectItem>
+            {THEME_OPTIONS.map((opt) => {
+              const Icon = opt.icon;
+              return (
+                <SelectItem key={opt.value} value={opt.value}>
+                  <span className="flex items-center gap-1.5">
+                    <Icon size={12} /> {t(opt.labelKey)}
+                  </span>
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       </SettingRow>
@@ -554,6 +717,7 @@ export function GeneralSection() {
       <SettingRow
         label={t('settings.autoUnlock')}
         desc={t('settings.autoUnlockDesc')}
+        icon={LockOpen}
       >
         <Switch checked={settings.autoUnlock} onCheckedChange={handleAutoUnlockToggle} />
       </SettingRow>
@@ -561,6 +725,7 @@ export function GeneralSection() {
       <SettingRow
         label={t('settings.resetOnIdle')}
         desc={t('settings.resetOnIdleDesc')}
+        icon={RefreshCw}
       >
         <Switch checked={settings.autoResetOnIdle} onCheckedChange={handleResetOnIdleToggle} />
       </SettingRow>
@@ -588,6 +753,7 @@ export function GeneralSection() {
       <SettingRow
         label={t('settings.autoStart')}
         desc={t('settings.autoStartDesc')}
+        icon={Power}
       >
         <Switch checked={settings.autoStart} onCheckedChange={handleAutoStartToggle} />
       </SettingRow>
@@ -679,18 +845,32 @@ interface SettingsProps {
 
 export function Settings({ isStandalone = false, initialTab }: SettingsProps) {
   const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState(initialTab || 'reminders');
 
   return (
-    <Tabs defaultValue={initialTab || 'reminders'} className="flex flex-col">
-      <div className="sticky top-0 z-10 bg-card px-4 pt-3 pb-0">
-        <TabsList variant="line" className="w-full">
-          <TabsTrigger value="reminders" className="flex-1 text-xs">
+    <Tabs
+      value={activeTab}
+      onValueChange={setActiveTab}
+      className="flex flex-col"
+    >
+      <div className="sticky top-0 z-10 rounded-t-[14px] bg-card px-4 pt-3 pb-0">
+        <TabsList variant="line" className="w-fit gap-2">
+          <TabsTrigger
+            value="reminders"
+            className="flex-none text-sm data-active:font-semibold"
+          >
             {t('settings.taskManagement')}
           </TabsTrigger>
-          <TabsTrigger value="general" className="flex-1 text-xs">
+          <TabsTrigger
+            value="general"
+            className="flex-none text-sm data-active:font-semibold"
+          >
             {t('settings.general')}
           </TabsTrigger>
-          <TabsTrigger value="advanced" className="flex-1 text-xs">
+          <TabsTrigger
+            value="advanced"
+            className="flex-none text-sm data-active:font-semibold"
+          >
             {t('settings.advanced')}
           </TabsTrigger>
         </TabsList>

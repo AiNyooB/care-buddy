@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { Clock, GlassWater, Eye } from 'lucide-react';
+import { Clock } from 'lucide-react';
+import { TaskIcon } from './Icons';
 
 interface PreviewPayload {
   taskId: string;
@@ -8,14 +9,6 @@ interface PreviewPayload {
   icon: string;
   remaining: number;
   preNotificationSeconds: number;
-}
-
-function TaskIcon({ icon }: { icon: string }) {
-  switch (icon) {
-    case 'eye': return <Eye size={16} />;
-    case 'water': return <GlassWater size={16} />;
-    default: return <Clock size={16} />;
-  }
 }
 
 export function FloatingPreview() {
@@ -33,7 +26,7 @@ export function FloatingPreview() {
     <div className="flex h-screen w-screen items-center justify-center bg-gradient-to-b from-black/60 to-black/80 px-4">
       <div className="flex w-full items-center justify-center gap-3">
         <div className="flex size-8 items-center justify-center rounded-full bg-white/15 text-white">
-          {preview ? <TaskIcon icon={preview.icon} /> : <Clock size={16} />}
+          {preview ? <TaskIcon icon={preview.icon} size={16} /> : <Clock size={16} />}
         </div>
         <div className="flex flex-col gap-0.5">
           <span className="text-sm font-medium leading-tight text-white">

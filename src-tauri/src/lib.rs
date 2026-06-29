@@ -113,7 +113,7 @@ pub struct TaskConfig {
     #[serde(default = "default_schedule_type")]
     pub schedule_type: String,
     #[serde(default)]
-    pub daily_times: Vec<String>,
+    pub daily_time: Option<String>,
     #[serde(default)]
     pub debug_interval_seconds: u64,
     #[serde(default)]
@@ -179,7 +179,7 @@ fn get_timer_state() -> &'static Mutex<TimerState> {
 }
 
 fn is_daily_task(task: &TaskConfig) -> bool {
-    task.schedule_type == "daily" && !task.daily_times.is_empty()
+    task.schedule_type == "daily" && task.daily_time.is_some()
 }
 
 fn parse_daily_time(value: &str) -> Option<(u32, u32)> {
@@ -198,35 +198,32 @@ fn current_daily_trigger_key(task: &TaskConfig) -> Option<String> {
         return None;
     }
 
+    let value = task.daily_time.as_deref()?;
+    let (hour, minute) = parse_daily_time(value)?;
     let now = Local::now();
-    for value in &task.daily_times {
-        if let Some((hour, minute)) = parse_daily_time(value) {
-            if now.hour() == hour && now.minute() == minute {
-                return Some(format!("{}:{:02}:{:02}", now.format("%Y-%m-%d"), hour, minute));
-            }
-        }
+    if now.hour() == hour && now.minute() == minute {
+        Some(format!("{}:{:02}:{:02}", now.format("%Y-%m-%d"), hour, minute))
+    } else {
+        None
     }
-    None
 }
 
 fn daily_remaining_seconds(task: &TaskConfig) -> u64 {
+    let Some(value) = task.daily_time.as_deref() else {
+        return 24 * 3600; // 无时间点时返回 24h，避免退化为 interval
+    };
+    let Some((hour, minute)) = parse_daily_time(value) else {
+        return 24 * 3600;
+    };
+
     let now = Local::now();
-    let now_secs = now.hour() * 3600 + now.minute() * 60 + now.second();
-    let mut best: Option<u32> = None;
-
-    for value in &task.daily_times {
-        if let Some((hour, minute)) = parse_daily_time(value) {
-            let target_secs = hour * 3600 + minute * 60;
-            let remaining = if target_secs >= now_secs {
-                target_secs - now_secs
-            } else {
-                24 * 3600 - now_secs + target_secs
-            };
-            best = Some(best.map_or(remaining, |current| current.min(remaining)));
-        }
+    let now_secs = (now.hour() * 3600 + now.minute() * 60 + now.second()) as u64;
+    let target_secs = (hour * 3600 + minute * 60) as u64;
+    if target_secs >= now_secs {
+        target_secs - now_secs
+    } else {
+        24 * 3600 - now_secs + target_secs
     }
-
-    best.map(|v| v as u64).unwrap_or(24 * 3600) // 无时间点时返回 24h，避免退化为 interval
 }
 
 fn start_session_monitor(app_handle: tauri::AppHandle) {
@@ -405,7 +402,7 @@ fn sync_tasks(app: tauri::AppHandle, tasks: Vec<TaskConfig>) {
                 // 任务已存在
                 let interval_changed = existing.config.interval != task.interval
                     || existing.config.schedule_type != task.schedule_type
-                    || existing.config.daily_times != task.daily_times
+                    || existing.config.daily_time != task.daily_time
                     || existing.config.debug_interval_seconds != task.debug_interval_seconds;
                 let was_disabled = !existing.config.enabled;
                 let is_now_enabled = task.enabled;

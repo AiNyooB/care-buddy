@@ -16,7 +16,7 @@ export const DEFAULT_TASKS = [
     preNotificationSeconds: 5,
     snoozeMinutes: 5,
     scheduleType: 'interval' as const,
-    dailyTimes: [],
+    dailyTime: null,
   },
   {
     id: 'water',
@@ -30,7 +30,7 @@ export const DEFAULT_TASKS = [
     preNotificationSeconds: 5,
     snoozeMinutes: 5,
     scheduleType: 'interval' as const,
-    dailyTimes: [],
+    dailyTime: null,
   },
   {
     id: 'eye',
@@ -44,7 +44,7 @@ export const DEFAULT_TASKS = [
     preNotificationSeconds: 5,
     snoozeMinutes: 5,
     scheduleType: 'interval' as const,
-    dailyTimes: [],
+    dailyTime: null,
   },
   {
     id: 'test',
@@ -58,7 +58,7 @@ export const DEFAULT_TASKS = [
     preNotificationSeconds: 1,
     snoozeMinutes: 1,
     scheduleType: 'interval' as const,
-    dailyTimes: [],
+    dailyTime: null,
     debugIntervalSeconds: 5,
   },
 ];

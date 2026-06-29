@@ -47,7 +47,7 @@ export async function syncTasks(tasks: Task[]): Promise<void> {
     icon: task.icon,
     auto_reset_on_idle: task.autoResetOnIdle,
     schedule_type: task.scheduleType,
-    daily_times: task.dailyTimes,
+    daily_time: task.dailyTime,
     debug_interval_seconds: task.debugIntervalSeconds ?? 0,
     lock_duration: task.lockDuration,
     pre_notification_seconds: task.preNotificationSeconds,

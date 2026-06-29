@@ -170,7 +170,7 @@ export function TimerCards() {
               <div className="flex w-full flex-col items-center gap-4">
                 {/* 任务名称 */}
                 <div className="flex flex-col items-center gap-1">
-                  <span className="text-sm font-medium text-foreground text-center">
+                  <span className="w-full min-w-0 truncate text-center text-sm font-medium text-foreground">
                     {t('taskNames.' + task.id, { defaultValue: task.title })}
                   </span>
                   {isTaskPaused && (

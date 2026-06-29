@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHealthStore } from '../store';
-import { CheckCircle, XCircle, ChevronRight, Dumbbell, Volume2, VolumeX } from './Icons';
+import { CheckCircle, XCircle, ChevronRight, Volume2, VolumeX } from './Icons';
+import { BicepsFlexed } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { exercises, exercisePackages } from '../data/exercises';
 import { guidedExerciseConfigs } from '../data/guided-configs';
@@ -42,7 +43,7 @@ function GuidedExerciseContent({ exercise, guidedState, guidedConfig, showProgre
   if (isPrep) {
     return (
       <div className="text-center animate-[lockScaleIn_0.35s_ease]">
-        <div className="text-2xl font-semibold text-white mb-2">{exercise.name}</div>
+        <div className="truncate text-2xl font-semibold text-white mb-2">{exercise.name}</div>
         <div className="text-white/60 text-sm mb-8">{t('guided.prep')}</div>
         <div className="flex items-center justify-center">
           <span className="text-[5rem] font-bold text-white leading-none">{guidedState.prepRemaining}</span>
@@ -78,7 +79,7 @@ function GuidedExerciseContent({ exercise, guidedState, guidedConfig, showProgre
     <div className="w-full">
       {/* Header - 固定 */}
       <div className="flex items-center gap-3 mb-3 text-white flex-shrink-0">
-        <Dumbbell size={20} />
+        <BicepsFlexed size={20} />
         <span className="text-xl font-semibold flex-1 min-w-0 truncate">{exercise.name}</span>
         {guidedConfig.repetitions > 1 && (
           <span className="text-white/60 text-sm tabular-nums">
@@ -221,7 +222,7 @@ function StaticExerciseContent({ exercise }: { exercise: Exercise }) {
   const { t } = useTranslation();
   return (
     <div className="text-center animate-[lockScaleIn_0.35s_ease]">
-      <div className="text-3xl font-bold text-white mb-2 drop-shadow-lg">{exercise.name}</div>
+      <div className="truncate text-3xl font-bold text-white mb-2 drop-shadow-lg">{exercise.name}</div>
       <div className="text-sm text-white/60 mb-4 uppercase tracking-wider">{t('categories.' + exercise.category)}</div>
       <div className="text-base text-white/80 mb-6 leading-relaxed">{exercise.description}</div>
 

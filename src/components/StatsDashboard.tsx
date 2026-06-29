@@ -10,7 +10,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { useHealthStore } from '../store';
-import { Flame, Dumbbell, Timer, Armchair, Eye, GlassWater, Plus } from 'lucide-react';
+import { BicepsFlexed, Timer, Activity, PersonStanding, Eye, GlassWater, Plus } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 
@@ -122,14 +122,14 @@ export function StatsDashboard() {
           <div className="flex items-stretch gap-2">
             <div className="flex flex-1 flex-col items-center justify-center rounded-lg bg-muted/50 py-1.5">
               <div className="flex items-center gap-1 text-orange-500">
-                <Flame size={16} />
+                <Activity size={20} />
                 <span className="text-xl font-bold">{streak}</span>
               </div>
               <span className="text-[11px] text-muted-foreground">{t('dashboard.streakDays', { defaultValue: '连续天数' })}</span>
             </div>
             <div className="flex flex-1 flex-col items-center justify-center rounded-lg bg-muted/50 py-1.5">
               <div className="flex items-center gap-1 text-primary">
-                <Dumbbell size={16} />
+                <BicepsFlexed size={16} />
                 <span className="text-xl font-bold">{weekTotals.exercises}</span>
               </div>
               <span className="text-[11px] text-muted-foreground">{t('stats.thisWeekExercises', { defaultValue: '本周运动(次)' })}</span>
@@ -145,28 +145,28 @@ export function StatsDashboard() {
           <div className="grid grid-cols-4 gap-1.5">
             <div className="flex flex-col items-center rounded-md bg-muted/30 py-1">
               <div className="flex items-center gap-0.5">
-                <Armchair size={12} className="text-chart-1" />
+                <PersonStanding size={20} className="text-chart-1" />
                 <span className="text-sm font-semibold tabular-nums">{weekTotals.sitBreaks}</span>
               </div>
               <span className="text-[10px] text-muted-foreground">{t('statCards.sitReminder', { defaultValue: '久坐提醒' })}</span>
             </div>
             <div className="flex flex-col items-center rounded-md bg-muted/30 py-1">
               <div className="flex items-center gap-0.5">
-                <Eye size={12} className="text-chart-3" />
+                <Eye size={20} className="text-chart-3" />
                 <span className="text-sm font-semibold tabular-nums">{weekTotals.eyeCare}</span>
               </div>
               <span className="text-[10px] text-muted-foreground">{t('statCards.eyeCare', { defaultValue: '护眼提醒' })}</span>
             </div>
             <div className="flex flex-col items-center rounded-md bg-muted/30 py-1">
               <div className="flex items-center gap-0.5">
-                <GlassWater size={12} className="text-chart-4" />
+                <GlassWater size={20} className="text-chart-4" />
                 <span className="text-sm font-semibold tabular-nums">{weekTotals.waterCups}</span>
               </div>
               <span className="text-[10px] text-muted-foreground">{t('statCards.waterReminder', { defaultValue: '喝水提醒' })}</span>
             </div>
             <div className="flex flex-col items-center rounded-md bg-muted/30 py-1">
               <div className="flex items-center gap-0.5">
-                <Plus size={12} className="text-muted-foreground" />
+                <Plus size={20} className="text-muted-foreground" />
                 <span className="text-sm font-semibold tabular-nums">{weekTotals.customBreaks}</span>
               </div>
               <span className="text-[10px] text-muted-foreground">{t('stats.customBreaks', { defaultValue: '主动' })}</span>
@@ -201,7 +201,7 @@ export function StatsDashboard() {
       <Card size="sm" className="border border-border ring-0">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-            <Dumbbell size={14} />
+            <BicepsFlexed size={14} />
             {t('stats.exerciseTrend', { defaultValue: '运动趋势' })}
             <span className="ml-auto text-[11px] font-normal text-muted-foreground">
               {t('stats.avgMinutes', { defaultValue: '日均' })} {avgExerciseMinutes}{t('dashboard.minutes', { defaultValue: '分钟' })}

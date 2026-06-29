@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { LayoutPanelTop, BicepsFlexed, FileChartColumn } from 'lucide-react';
+import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Sheet, SheetContent, SheetHeader } from '@/components/ui/sheet';
 import { WindowControls } from '@/components/WindowControls';
 import { Dashboard } from '@/components/Dashboard';
 import { Settings } from '@/components/Settings';
@@ -35,7 +35,6 @@ export default function App() {
   const { t } = useTranslation();
   const [viewMode, setViewMode] = useState<ViewMode>('main');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsInitialTab, setSettingsInitialTab] = useState<string>('reminders');
 
   const tasks = useHealthStore((s) => s.tasks);
   const exercisePanel = useHealthStore((s) => s.exercisePanel);
@@ -60,6 +59,15 @@ export default function App() {
     syncTasks(tasks);
   }, [tasks]);
 
+  // Tab 切换方向：按 tabIndex 计算"新 view 在旧 view 的左/右"
+  const tabIndex: Record<ViewMode, number> = { main: 0, exercise: 1, stats: 2 };
+  const prevViewRef = useRef<ViewMode>(viewMode);
+  const tabDirection =
+    viewMode !== prevViewRef.current && tabIndex[viewMode] > tabIndex[prevViewRef.current] ? 1 : -1;
+  useEffect(() => {
+    prevViewRef.current = viewMode;
+  });
+
   const handleTogglePause = async () => {
     const { invoke } = await import('@tauri-apps/api/core');
     if (isPaused) {
@@ -83,8 +91,11 @@ export default function App() {
         data-tauri-drag-region
       >
         <Tabs
-          value={viewMode}
-          onValueChange={(v) => setViewMode(v as ViewMode)}
+          value={settingsOpen ? '' : viewMode}
+          onValueChange={(v) => {
+            setSettingsOpen(false);
+            setViewMode(v as ViewMode);
+          }}
         >
           <TabsList className="rounded-lg bg-tab-bg p-[3px]">
             <TabsTrigger
@@ -111,37 +122,83 @@ export default function App() {
           </TabsList>
         </Tabs>
 
-        <WindowControls onOpenSettings={(initialTab) => {
-          if (initialTab) setSettingsInitialTab(initialTab);
-          setSettingsOpen(true);
-        }} />
+        <WindowControls
+          settingsOpen={settingsOpen}
+          onOpenSettings={(initialTab) => {
+            if (initialTab === undefined) {
+              setSettingsOpen((prev) => !prev);
+              return;
+            }
+            setSettingsOpen(true);
+          }}
+        />
       </header>
 
       {/* 内容区 */}
       <main className="relative flex-1 overflow-y-auto px-2 pb-2">
         {/* 页面级 6 列网格调试覆盖线（z-50），相对于 main 的 var(--grid-offset) = 24px = 窗口边缘 24px */}
         <GridDebug />
-        <div className="mx-auto flex h-full min-h-0 w-full max-w-[calc(var(--grid-content)+32px)] flex-col rounded-[14px] bg-card p-4">
-          {viewMode === 'main' && <Dashboard />}
-          {viewMode === 'exercise' && <ExerciseLibrary />}
-          {viewMode === 'stats' && <StatsDashboard />}
-        </div>
+        <MotionConfig reducedMotion="user">
+          <div
+            className={
+              `mx-auto flex h-full min-h-0 w-full max-w-[calc(var(--grid-content)+32px)] flex-col overflow-x-hidden rounded-[14px] bg-card ` +
+              (settingsOpen ? '' : 'p-4')
+            }
+          >
+            <AnimatePresence mode="wait" initial={false}>
+              {settingsOpen ? (
+                <motion.div
+                  key="settings"
+                  initial={{ scale: 0.96, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.96, opacity: 0 }}
+                  transition={{ duration: 0.18, ease: [0.32, 0.72, 0, 1] }}
+                  className="h-full"
+                >
+                  <Settings initialTab="reminders" />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key={viewMode}
+                  custom={tabDirection}
+                  variants={{
+                    initial: (dir: number) => ({ x: dir * 24, opacity: 0 }),
+                    animate: { x: 0, opacity: 1 },
+                    exit: (dir: number) => ({ x: -dir * 24, opacity: 0 }),
+                  }}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className="h-full"
+                >
+                  {viewMode === 'main' && <Dashboard />}
+                  {viewMode === 'exercise' && <ExerciseLibrary />}
+                  {viewMode === 'stats' && <StatsDashboard />}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </MotionConfig>
       </main>
 
-      {/* 设置 Sheet */}
-      <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <SheetContent side="top">
-          <SheetHeader showCloseButton>
-            {t('settings.title')}
-          </SheetHeader>
-          <div className="flex-1 overflow-y-auto">
-            <Settings key={settingsInitialTab} initialTab={settingsInitialTab} />
-          </div>
-        </SheetContent>
-      </Sheet>
+      {/* ESC 关闭设置 */}
+      <SettingsEscListener open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       {exercisePanel.active && <ExercisePanel />}
       <Toaster />
     </div>
   );
+}
+
+function SettingsEscListener({ open, onClose }: { open: boolean; onClose: () => void }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+  return null;
 }

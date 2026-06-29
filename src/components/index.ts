@@ -1,6 +1,5 @@
 export * from './Icons';
 export * from './TimerCards';
-export * from './TodayStats';
 export * from './QuickActions';
 export * from './Settings';
 export * from './ExercisePanel';
