@@ -4,7 +4,8 @@ import { useHealthStore } from '../store';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { setAutoStart, saveSettingsToBackend, emitSettingsUpdated, syncTasks, setIdleThreshold, updateTrayLanguage } from '../services';
-import { Shield, Sun, Moon, Monitor, Globe, Plus, X, Bell, Trash2, Timer, LockOpen, RefreshCw, Power, type LucideIcon } from 'lucide-react';
+import { Shield, Sun, Moon, Monitor, Globe, Plus, X, Bell, Trash2, Timer, LockOpen, RefreshCw, Power, Lock, Dumbbell, type LucideIcon } from 'lucide-react';
+
 import { ToggleGroup } from '@base-ui/react/toggle-group';
 import { Toggle } from '@base-ui/react/toggle';
 import { NumberField } from '@base-ui/react/number-field';
@@ -13,13 +14,12 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -31,6 +31,9 @@ import {
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { TaskIcon } from './Icons';
+import { exercises, categoryNames } from '../data/exercises';
+import { computeExerciseDuration, formatExerciseDuration } from '../utils/exercise';
+import { formatDuration } from '../utils/time';
 import type { Task, ScheduleType, AppSettings } from '../types';
 
 const LOCALES = [
@@ -142,6 +145,8 @@ function createEmptyTask(): Task {
     snoozeMinutes: 5,
     scheduleType: 'interval',
     dailyTime: null,
+    isExerciseTask: false,
+    exerciseIds: undefined,
   };
 }
 
@@ -340,6 +345,9 @@ function ReminderEditorDialog({
     setDraft(editing ? { ...editing.draft } : null);
   }, [editing]);
 
+  const isDefault =
+    editing?.mode === 'edit' && !!editing.taskId && DEFAULT_TASK_IDS.has(editing.taskId);
+
   const updateDraft = (patch: Partial<Task>) => {
     setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
   };
@@ -348,14 +356,14 @@ function ReminderEditorDialog({
 
   return (
     <Dialog open={!!editing} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-[440px]">
-        <DialogHeader>
+      <DialogContent className="!flex !flex-col !max-h-[80vh] !max-w-[440px] !overflow-hidden !p-0 !gap-0">
+        <header className="flex-none border-b border-border px-4 pt-4 pb-3">
           <DialogTitle>
             {editing.mode === 'new' ? t('settings.newReminder') : t('settings.editReminder')}
           </DialogTitle>
-        </DialogHeader>
+        </header>
 
-        <div className="space-y-3">
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {/* 名称 + 图标（图标只读，不可选） */}
           <div className="flex items-center gap-2">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
@@ -367,12 +375,20 @@ function ReminderEditorDialog({
                 updateDraft({ title: e.target.value, desc: `${e.target.value}提醒` })
               }
               placeholder={t('settings.reminderNamePlaceholder')}
-              className="h-8 text-sm"
+              readOnly={isDefault}
+              className={cn('h-8 text-sm', isDefault && 'cursor-not-allowed opacity-60')}
             />
+            {isDefault && (
+              <Badge className="h-5 shrink-0 gap-1 rounded-full bg-muted px-2 text-type-badge font-medium leading-[var(--type-badge-lh)] text-secondary-foreground">
+                <Lock size={10} />
+                {t('settings.defaultReminder')}
+              </Badge>
+            )}
           </div>
 
           <Separator />
 
+          {/* form fields - 永远显示，无折叠 */}
           <SettingRow label={t('settings.scheduleType')}>
             <ToggleGroup
               value={[draft.scheduleType]}
@@ -437,18 +453,50 @@ function ReminderEditorDialog({
           </SettingRow>
 
           <SettingRow label={t('settings.lockDuration')}>
-            <NumField
-              value={draft.lockDuration}
-              min={10}
-              max={600}
-              step={10}
-              suffix={t('settings.seconds')}
-              onCommit={(v) => updateDraft({ lockDuration: v })}
+            {draft.isExerciseTask ? (
+              <span className="text-type-body tabular-nums text-muted-foreground">
+                {formatDuration(computeExerciseDuration(draft.exerciseIds))}
+              </span>
+            ) : (
+              <NumField
+                value={draft.lockDuration}
+                min={10}
+                max={600}
+                step={10}
+                suffix={t('settings.seconds')}
+                onCommit={(v) => updateDraft({ lockDuration: v })}
+              />
+            )}
+          </SettingRow>
+
+          <Separator />
+
+          {/* 锁屏锻炼 section - chips + 5 分类 + 33 运动，全部 inline 展示 */}
+          <SettingRow
+            label={t('settings.lockScreenExerciseEditor')}
+            desc={t('settings.lockScreenExerciseEditorDesc')}
+            icon={Dumbbell}
+          >
+            <Switch
+              checked={!!draft.isExerciseTask}
+              onCheckedChange={(v) =>
+                updateDraft({
+                  isExerciseTask: v,
+                  exerciseIds: v ? (draft.exerciseIds ?? []) : undefined,
+                })
+              }
             />
           </SettingRow>
+
+          {draft.isExerciseTask && (
+            <ExerciseSelector
+              selectedIds={draft.exerciseIds ?? []}
+              onChange={(ids) => updateDraft({ exerciseIds: ids })}
+            />
+          )}
         </div>
 
-        <DialogFooter className="!flex-row !justify-between">
+        <footer className="flex flex-none items-center justify-between gap-2 border-t border-border bg-card px-4 py-3">
           {onDelete ? (
             <Button variant="destructive" size="sm" onClick={onDelete}>
               <Trash2 size={14} /> {t('settings.deleteReminder')}
@@ -464,7 +512,7 @@ function ReminderEditorDialog({
               {t('settings.save')}
             </Button>
           </div>
-        </DialogFooter>
+        </footer>
       </DialogContent>
     </Dialog>
   );
@@ -769,14 +817,29 @@ export function AdvancedSection() {
   const { t } = useTranslation();
   const settings = useHealthStore((s) => s.settings);
   const updateSettings = useHealthStore((s) => s.updateSettings);
+  const tasks = useHealthStore((s) => s.tasks);
 
   const [mergeInputValue, setMergeInputValue] = useState(String(settings.mergeThreshold));
 
+  const exerciseEnabledCount = tasks.filter((t) => t.isExerciseTask).length;
+
   const handleLockScreenToggle = async (checked: boolean) => {
-    updateSettings({ lockScreenEnabled: checked });
+    // 联动：开强制全屏时自动开锁屏锻炼（Q65-A 单向）
+    const updates: Partial<AppSettings> = checked
+      ? { lockScreenEnabled: true, lockScreenExerciseEnabled: true }
+      : { lockScreenEnabled: false };
+    updateSettings(updates);
     const currentSettings = useHealthStore.getState().settings;
-    await saveSettingsToBackend({ ...currentSettings, lockScreenEnabled: checked }).catch(console.error);
-    await emitSettingsUpdated({ lockScreenEnabled: checked }).catch(console.error);
+    await saveSettingsToBackend({ ...currentSettings, ...updates }).catch(console.error);
+    await emitSettingsUpdated(updates).catch(console.error);
+  };
+
+  const handleLockScreenExerciseToggle = async (checked: boolean) => {
+    if (checked && exerciseEnabledCount === 0) return;
+    updateSettings({ lockScreenExerciseEnabled: checked });
+    const currentSettings = useHealthStore.getState().settings;
+    await saveSettingsToBackend({ ...currentSettings, lockScreenExerciseEnabled: checked }).catch(console.error);
+    await emitSettingsUpdated({ lockScreenExerciseEnabled: checked }).catch(console.error);
   };
 
   const handleMergeThresholdChange = async (value: number) => {
@@ -799,27 +862,46 @@ export function AdvancedSection() {
       <SettingRow
         label={t('settings.lockScreen')}
         desc={t('settings.lockScreenDesc')}
+        icon={Lock}
       >
         <Switch checked={settings.lockScreenEnabled} onCheckedChange={handleLockScreenToggle} />
       </SettingRow>
 
       {settings.lockScreenEnabled && (
-        <div className="flex items-center justify-between py-2 pl-4">
-          <Label className="text-xs text-muted-foreground">{t('settings.mergeThreshold')}</Label>
-          <div className="flex items-center gap-1.5">
-            <Input
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={30}
-              value={mergeInputValue}
-              onChange={(e) => setMergeInputValue(e.target.value)}
-              onBlur={() => handleMergeThresholdChange(parseInt(mergeInputValue, 10) || 5)}
-              className="h-7 w-14 text-center text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            />
-            <span className="text-xs text-muted-foreground">{t('time.minutes')}</span>
+        <>
+          <div className="flex items-center justify-between py-2 pl-4">
+            <Label className="text-xs text-muted-foreground">{t('settings.mergeThreshold')}</Label>
+            <div className="flex items-center gap-1.5">
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={30}
+                value={mergeInputValue}
+                onChange={(e) => setMergeInputValue(e.target.value)}
+                onBlur={() => handleMergeThresholdChange(parseInt(mergeInputValue, 10) || 5)}
+                className="h-7 w-14 text-center text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <span className="text-xs text-muted-foreground">{t('time.minutes')}</span>
+            </div>
           </div>
-        </div>
+
+          <SettingRow
+            label={t('settings.lockScreenExercise')}
+            desc={
+              exerciseEnabledCount === 0
+                ? t('settings.lockScreenExerciseNoConfig')
+                : t('settings.lockScreenExerciseCount', { count: exerciseEnabledCount })
+            }
+            icon={Dumbbell}
+          >
+            <Switch
+              checked={settings.lockScreenExerciseEnabled}
+              disabled={exerciseEnabledCount === 0}
+              onCheckedChange={handleLockScreenExerciseToggle}
+            />
+          </SettingRow>
+        </>
       )}
 
       <SettingRow
@@ -888,5 +970,139 @@ export function Settings({ isStandalone = false, initialTab }: SettingsProps) {
         </TabsContent>
       </div>
     </Tabs>
+  );
+}
+
+// ============================================================================
+// 锁屏锻炼 — chips + 5 分类 Tabs（tab 切换不改变 dialog 高度）
+// ============================================================================
+
+function ExerciseSelector({
+  selectedIds,
+  onChange,
+}: {
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const { t } = useTranslation();
+  const [activeCategory, setActiveCategory] = useState<keyof typeof categoryNames>('spine');
+
+  const handleRemove = (id: string) => {
+    onChange(selectedIds.filter((x) => x !== id));
+  };
+
+  const handleToggle = (id: string) => {
+    onChange(
+      selectedIds.includes(id)
+        ? selectedIds.filter((x) => x !== id)
+        : [...selectedIds, id]
+    );
+  };
+
+  const categories: Array<keyof typeof categoryNames> = [
+    'spine',
+    'circulation',
+    'metabolism',
+    'vision',
+    'wrist',
+  ];
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2 text-type-caption">
+        <span className="text-muted-foreground">
+          {t('settings.exerciseSelectedCount', { count: selectedIds.length })}
+        </span>
+        {selectedIds.length > 10 && (
+          <span className="flex items-center gap-1 text-warning">
+            <Bell size={10} className="shrink-0" />
+            {t('settings.exerciseTooManyWarn', {
+              count: selectedIds.length,
+              minutes: Math.round(computeExerciseDuration(selectedIds) / 60),
+            })}
+          </span>
+        )}
+      </div>
+
+      {/* chips 区域 - 无折叠、无 max-h */}
+      {selectedIds.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {selectedIds.map((id) => {
+            const ex = exercises.find((e) => e.id === id);
+            return (
+              <Badge
+                key={id}
+                variant="secondary"
+                className="h-6 gap-1 rounded-full bg-secondary px-2 text-type-badge font-medium leading-[var(--type-badge-lh)] text-secondary-foreground"
+              >
+                <span className="max-w-[120px] truncate">{ex?.name ?? id}</span>
+                <button
+                  type="button"
+                  onClick={() => handleRemove(id)}
+                  className="ml-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+                  aria-label="Remove"
+                >
+                  <X size={10} />
+                </button>
+              </Badge>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="text-xs text-muted-foreground">
+          {t('settings.exerciseEmptyWarn')}
+        </div>
+      )}
+
+      {/* Tabs - 5 分类，line 样式，Panel 加 keepMounted（base-ui 库内建）*/}
+      <Tabs
+        value={activeCategory}
+        onValueChange={(v) => setActiveCategory(v as keyof typeof categoryNames)}
+      >
+        <TabsList variant="line" className="w-full justify-start gap-0 border-b border-border">
+          {categories.map((cat) => (
+            <TabsTrigger
+              key={cat}
+              value={cat}
+              className="flex-1 text-xs text-muted-foreground transition-colors -mb-px data-active:font-semibold data-active:text-foreground"
+            >
+              {categoryNames[cat]}
+            </TabsTrigger>
+          ))}
+          {/* 不渲染 <Tabs.Indicator>，无下划线动画 */}
+        </TabsList>
+        {categories.map((cat) => (
+          <TabsContent
+            key={cat}
+            value={cat}
+            keepMounted
+            className="min-h-[250px] !flex-none"
+          >
+            <div className="space-y-0.5 pt-1">
+              {exercises.filter((e) => e.category === cat).map((ex) => {
+                const checked = selectedIds.includes(ex.id);
+                return (
+                  <label
+                    key={ex.id}
+                    className={cn(
+                      'flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm transition-colors hover:bg-muted/60 has-[input:checked]:bg-primary/5'
+                    )}
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={() => handleToggle(ex.id)}
+                    />
+                    <span className="min-w-0 flex-1 truncate">{ex.name}</span>
+                    <span className="shrink-0 text-type-caption text-muted-foreground tabular-nums">
+                      {formatExerciseDuration(computeExerciseDuration([ex.id]))}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </TabsContent>
+        ))}
+      </Tabs>
+    </div>
   );
 }

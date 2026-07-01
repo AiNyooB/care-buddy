@@ -122,6 +122,12 @@ pub struct TaskConfig {
     pub pre_notification_seconds: u64,
     #[serde(default)]
     pub snooze_minutes: u64,
+    #[serde(default)]
+    pub is_exercise_task: bool,
+    #[serde(default)]
+    pub exercise_package_id: Option<String>,
+    #[serde(default)]
+    pub exercise_ids: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug)]
@@ -315,6 +321,12 @@ struct LockTaskArgs {
     bg_image: String,
     #[serde(default)]
     auto_unlock: bool,
+    #[serde(default)]
+    is_exercise_mode: bool,
+    #[serde(default)]
+    exercise_package_id: Option<String>,
+    #[serde(default)]
+    exercise_ids: Option<Vec<String>>,
 }
 
 // ============= 定时器命令 =============
@@ -802,6 +814,7 @@ fn start_timer_thread(app_handle: AppHandle) {
                         }
                     }
 
+                    let primary_monitor = app_handle.primary_monitor().ok().flatten();
                     for (i, m) in monitors.iter().enumerate() {
                         if !covered_indices.contains(&i) {
                             let label = format!("lock-slave-{}", i);
@@ -810,7 +823,11 @@ fn start_timer_thread(app_handle: AppHandle) {
                                 let _ = win.set_size(tauri::Size::Physical(m.size().clone()));
                                 let _ = win.set_fullscreen(true);
                             } else if args.is_some() {
-                                if let Some(new_label) = create_slave_window(&app_handle, m, args.as_ref(), i) {
+                                let is_primary = primary_monitor
+                                    .as_ref()
+                                    .map(|p| p.position() == m.position())
+                                    .unwrap_or(i == 0);
+                                if let Some(new_label) = create_slave_window(&app_handle, m, args.as_ref(), i, is_primary) {
                                     guard.windows.push(new_label);
                                 }
                             }
@@ -1321,24 +1338,30 @@ fn update_tray_language(app: AppHandle, lang_state: State<LanguageState>, langua
     }
 }
 
-fn create_slave_window(app: &AppHandle, monitor: &tauri::Monitor, task: Option<&LockTaskArgs>, index: usize) -> Option<String> {
+fn create_slave_window(app: &AppHandle, monitor: &tauri::Monitor, task: Option<&LockTaskArgs>, index: usize, is_primary: bool) -> Option<String> {
     let label = format!("lock-slave-{}", index);
     
     let mut url_str = String::from("index.html?mode=lock_slave");
     if let Some(t) = task {
-         let encoded: String = form_urlencoded::Serializer::new(String::new())
+         let exercise_ids_str = t.exercise_ids.as_deref().unwrap_or(&[]).join(",");
+         let mut serializer = form_urlencoded::Serializer::new(String::new());
+         serializer
             .append_pair("title", &t.title)
-            .append_pair("desc", &t.desc)
-            .append_pair("duration", &t.duration.to_string())
-            .append_pair("icon", &t.icon)
-            .append_pair("strict_mode", &t.strict_mode.to_string())
-            .append_pair("allow_strict_snooze", &t.allow_strict_snooze.to_string())
-            .append_pair("max_snooze_count", &t.max_snooze_count.to_string())
-            .append_pair("snooze_minutes", &t.snooze_minutes.to_string())
-            .append_pair("current_snooze_count", &t.current_snooze_count.to_string())
-            .append_pair("bg_image", &t.bg_image)
-            .append_pair("auto_unlock", &t.auto_unlock.to_string())
-            .finish();
+            .append_pair("is_primary", &is_primary.to_string());
+         // 主显示器传完整参数；副显示器只读 title，不接受交互
+         if is_primary {
+            serializer
+               .append_pair("desc", &t.desc)
+               .append_pair("duration", &t.duration.to_string())
+               .append_pair("icon", &t.icon)
+               .append_pair("strict_mode", &t.strict_mode.to_string())
+               .append_pair("bg_image", &t.bg_image)
+               .append_pair("auto_unlock", &t.auto_unlock.to_string())
+               .append_pair("is_exercise_mode", &t.is_exercise_mode.to_string())
+               .append_pair("exercise_package_id", t.exercise_package_id.as_deref().unwrap_or(""))
+               .append_pair("exercise_ids", &exercise_ids_str);
+         }
+         let encoded = serializer.finish();
          url_str = format!("index.html?mode=lock_slave&{}", encoded);
     }
 
@@ -1380,12 +1403,18 @@ async fn enter_lock_mode(app: tauri::AppHandle, state: State<'_, LockState>, tas
     }
 
     let monitors = window.available_monitors().unwrap_or_default();
-    
+    // 主显示器：完整锁屏；副显示器：仅显示提示
+    let primary = window.primary_monitor().ok().flatten();
+
     let mut created_windows = Vec::new();
-    
+
     // Create a full-screen lock slave on EVERY monitor (including primary)
     for (i, m) in monitors.iter().enumerate() {
-        if let Some(label) = create_slave_window(&app, m, task.as_ref(), i) {
+        let is_primary = primary
+            .as_ref()
+            .map(|p| p.position() == m.position())
+            .unwrap_or(i == 0);
+        if let Some(label) = create_slave_window(&app, m, task.as_ref(), i, is_primary) {
             created_windows.push(label);
         }
     }

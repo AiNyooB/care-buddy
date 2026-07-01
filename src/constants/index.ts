@@ -17,6 +17,8 @@ export const DEFAULT_TASKS = [
     snoozeMinutes: 5,
     scheduleType: 'interval' as const,
     dailyTime: null,
+    isExerciseTask: true,
+    exerciseIds: ['S-01'],
   },
   {
     id: 'water',
@@ -45,6 +47,8 @@ export const DEFAULT_TASKS = [
     snoozeMinutes: 5,
     scheduleType: 'interval' as const,
     dailyTime: null,
+    isExerciseTask: true,
+    exerciseIds: ['E-01'],
   },
   {
     id: 'test',
@@ -66,6 +70,7 @@ export const DEFAULT_TASKS = [
 // 默认设置
 export const DEFAULT_SETTINGS = {
   lockScreenEnabled: false,
+  lockScreenExerciseEnabled: false,
   strictMode: false,
   autoUnlock: false,
   autoResetOnIdle: true,

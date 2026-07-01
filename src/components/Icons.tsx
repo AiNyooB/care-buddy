@@ -22,6 +22,7 @@ import {
   Dumbbell,
   Trash2,
   X,
+  PersonStanding,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -46,6 +47,7 @@ export {
   X,
   Eye,
   GlassWater,
+  PersonStanding,
 };
 
 export function TaskIcon({ icon, size = 14 }: { icon: string; size?: number }): React.ReactElement {
@@ -54,6 +56,7 @@ export function TaskIcon({ icon, size = 14 }: { icon: string; size?: number }): 
     water: GlassWater,
     work: Clock,
     exercise: Dumbbell,
+    sit: PersonStanding,
   };
   const Icon = IconMap[icon] ?? Clock;
   return <Icon size={size} />;

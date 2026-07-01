@@ -23,7 +23,7 @@ Tauri 2 / React 19 / TypeScript 6 / Zustand 5 / Tailwind 4 / shadcn v4 (base-nov
 - **窗口** — 492×696，无边框（`decorations: false`），`withGlobalTauri: true`，`resizable: false`
 - **布局** — 无侧边栏，顶部标题栏 `--titlebar-height: 48px`，主内容卡片 `p-4`，使用 flex 布局自适应高度（内容容器需加 `h-full flex flex-col min-h-0`，滚动区域加 `flex-1 min-h-0 overflow-y-auto`）
 - **三个入口** — `?mode=` 参数路由：无参数 → `<App />`，`lock_slave` → `<LockScreenSlave />`（全屏锁屏 webview），`floating` → `<FloatingPreview />`（置顶悬浮窗 320×104）
-- **锁屏** — 多显示器全屏锁屏：每块显示器创建一个 `lock-slave-N` webview 窗口；`LockState` 维护窗口列表；看门狗线程每秒检查覆盖完整性和窗口存活
+- **锁屏** — 多显示器全屏锁屏：每块显示器创建一个 `lock-slave-N` webview 窗口；主显示器（`app.primary_monitor()`）传完整 URL params + 完整状态机 + 引导模式（`useGuidedExercise` + 共享 `GuidedExerciseContent`，prep/step/TTS/节拍/多运动切换/30s fallback），副显示器只传 `title` + `is_primary=false` + 静态提示文案（无交互、无 state）；`LockState` 维护窗口列表；看门狗线程每秒检查覆盖完整性和窗口存活
 - **存储** — localStorage + `care_buddy_` 前缀（`src/utils/storage.ts`）；部分设置通过 Tauri IPC 持久化到 `~/.config/care-buddy/settings.json`
 - **图标** — Lucide React（可直接从 `lucide-react` 导入，也可用 `src/components/Icons.tsx` 封装）
 - **动画** — `tw-animate-css` 工具类 + `motion`（framer-motion 子代，用于 CircularProgress）

@@ -25,7 +25,6 @@ export interface Task {
   debugIntervalSeconds?: number; // 测试用：覆盖 interval，单位秒
   // 运动相关字段
   isExerciseTask?: boolean;
-  exercisePackageId?: string;
   exerciseIds?: string[];
 }
 
@@ -35,6 +34,7 @@ export type TaskStatus = 'idle' | 'running' | 'paused' | 'snoozed' | 'locked';
 // 应用设置
 export interface AppSettings {
   lockScreenEnabled: boolean;
+  lockScreenExerciseEnabled: boolean;
   strictMode: boolean;
   autoUnlock: boolean;
   autoResetOnIdle: boolean;

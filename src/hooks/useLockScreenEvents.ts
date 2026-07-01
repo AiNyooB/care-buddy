@@ -9,6 +9,12 @@ import {
   playNotificationSound,
   listen,
 } from '@/services';
+import { computeExerciseDuration } from '@/utils/exercise';
+import type { AppSettings, Task } from '@/types';
+
+function shouldUseExercise(task: Task, settings: AppSettings): boolean {
+  return Boolean(settings.lockScreenExerciseEnabled) && Boolean(task.isExerciseTask);
+}
 
 export function useLockScreenEvents() {
   const lockScreenCreating = useRef(false);
@@ -50,12 +56,20 @@ export function useLockScreenEvents() {
         const task = state.tasks.find((t) => t.id === taskId);
         if (task) {
           lockScreenCreating.current = true;
-          state.openLockScreen(taskId, task.lockDuration ?? 60, mergedIds);
+          const useExercise = shouldUseExercise(task, latestSettings);
+          const computedDuration = useExercise
+            ? computeExerciseDuration(task.exerciseIds)
+            : 0;
+          const duration = useExercise && computedDuration > 0
+            ? computedDuration
+            : (task.lockDuration ?? 60);
+
+          state.openLockScreen(taskId, duration, mergedIds);
           await timerSetLockScreenActive(true).catch(console.warn);
           await enterLockMode({
             title: task.title,
             desc: task.desc,
-            duration: task.lockDuration ?? 60,
+            duration,
             icon: task.icon,
             strictMode: latestSettings.strictMode,
             allowStrictSnooze: latestSettings.allowStrictSnooze ?? false,
@@ -63,6 +77,8 @@ export function useLockScreenEvents() {
             snoozeMinutes: task.snoozeMinutes ?? 5,
             currentSnoozeCount: 0,
             autoUnlock: latestSettings.autoUnlock,
+            isExerciseMode: useExercise,
+            exerciseIds: useExercise ? (task.exerciseIds ?? []) : [],
           }).catch(console.warn);
         }
       });

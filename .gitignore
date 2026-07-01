@@ -42,6 +42,8 @@ src-tauri/gen/
 # 文档 & 设计会话
 *.docx
 docs/
+NetSpeed-Dynamic-main
+.vs/
 
 # 其他
 打包指南.md
@@ -52,3 +54,4 @@ log.txt
 
 # ��������
 dist-node/
+

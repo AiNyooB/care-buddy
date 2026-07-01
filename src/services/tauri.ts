@@ -52,6 +52,8 @@ export async function syncTasks(tasks: Task[]): Promise<void> {
     lock_duration: task.lockDuration,
     pre_notification_seconds: task.preNotificationSeconds,
     snooze_minutes: task.snoozeMinutes,
+    is_exercise_task: task.isExerciseTask ?? false,
+    exercise_ids: task.exerciseIds ?? null,
   }));
   await invoke('sync_tasks', { tasks: tasksForBackend });
 }
@@ -179,6 +181,9 @@ export interface LockTaskArgs {
   currentSnoozeCount: number;
   bgImage?: string;
   autoUnlock?: boolean;
+  isExerciseMode?: boolean;
+  exercisePackageId?: string;
+  exerciseIds?: string[];
 }
 
 export async function enterLockMode(task?: LockTaskArgs): Promise<void> {
