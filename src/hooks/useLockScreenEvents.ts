@@ -37,11 +37,6 @@ export function useLockScreenEvents() {
           for (const id of mergedIds) {
             timerResetTask(id).catch(console.warn);
           }
-          const firstTask = store.tasks.find((t) => t.id === taskId);
-          if (firstTask) {
-            showNotification(firstTask.title, firstTask.desc || '').catch(console.warn);
-            playNotificationSound(taskId).catch(console.warn);
-          }
           return;
         }
 

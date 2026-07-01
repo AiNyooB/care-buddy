@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { emit } from '@tauri-apps/api/event';
+import { emit, listen } from '@tauri-apps/api/event';
 import { useHealthStore } from '@/store';
 import {
   onCountdownUpdate,
@@ -24,30 +24,39 @@ export function useCountdownSync() {
 
       for (const id of [...notifiedPre.current]) {
         const task = currentTasks.find((t) => t.id === id);
-        if (!task) {
+        if (!task || !task.enabled) {
           notifiedPre.current.delete(id);
           continue;
         }
         const remaining = countdowns[id];
-        if (remaining === undefined || remaining <= 0 || remaining > task.preNotificationSeconds) {
+        if (remaining === undefined || remaining > task.preNotificationSeconds) {
           notifiedPre.current.delete(id);
         }
       }
 
-      const previewTarget = currentTasks.reduce<{
-        id: string; title: string; icon: string; remaining: number; preNotificationSeconds: number;
-      } | null>((best, task) => {
+      const previewTasks = currentTasks.filter((task) => {
         const remaining = countdowns[task.id];
-        if (remaining === undefined) return best;
-        if (!task.enabled || task.preNotificationSeconds <= 0) return best;
-        if (remaining <= 0 || remaining > task.preNotificationSeconds) return best;
-        if (!best || remaining < best.remaining) {
-          return { id: task.id, title: task.title, icon: task.icon, remaining, preNotificationSeconds: task.preNotificationSeconds };
-        }
-        return best;
-      }, null);
+        if (remaining === undefined) return false;
+        if (!task.enabled || task.preNotificationSeconds <= 0) return false;
+        if (remaining <= 0 || remaining > task.preNotificationSeconds) return false;
+        return true;
+      });
+
+      const previewTarget = previewTasks.length > 0
+        ? previewTasks.reduce<{
+            id: string; title: string; icon: string; remaining: number; preNotificationSeconds: number; otherCount: number;
+          }>((best, task) => {
+            const remaining = countdowns[task.id]!;
+            if (!best || remaining < best.remaining) {
+              return { id: task.id, title: task.title, icon: task.icon, remaining, preNotificationSeconds: task.preNotificationSeconds, otherCount: 0 };
+            }
+            return best;
+          }, null!)
+        : null;
 
       if (previewTarget) {
+        previewTarget.otherCount = previewTasks.length - 1;
+
         emit('floating-preview-update', previewTarget);
         if (!floatingVisible.current) {
           floatingVisible.current = true;
@@ -67,6 +76,13 @@ export function useCountdownSync() {
       }
     });
 
-    return () => { unlisten.then((fn) => fn()); };
+    const unlistenLockCompleted = listen<{ completed: boolean }>('lock-screen-completed', () => {
+      floatingVisible.current = false;
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+      unlistenLockCompleted.then((fn) => fn());
+    };
   }, [t]);
 }

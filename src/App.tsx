@@ -87,7 +87,7 @@ export default function App() {
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-muted" onContextMenu={(e) => e.preventDefault()}>
       {/* 标题栏 */}
       <header
-        className="flex h-[var(--titlebar-height)] shrink-0 items-center justify-between bg-muted px-2"
+        className="relative flex h-[var(--titlebar-height)] shrink-0 items-center justify-between bg-muted px-2"
         data-tauri-drag-region
       >
         <Tabs
@@ -121,6 +121,11 @@ export default function App() {
             </TabsTrigger>
           </TabsList>
         </Tabs>
+
+        {/* dev 标识 */}
+        <div className="absolute left-1/2 -translate-x-1/2 flex h-5 items-center rounded bg-amber-500/20 px-2 ring-1 ring-amber-500/30">
+          <span className="text-[10px] font-bold tracking-widest text-amber-400">DEV</span>
+        </div>
 
         <WindowControls
           settingsOpen={settingsOpen}
