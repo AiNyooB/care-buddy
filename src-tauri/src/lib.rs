@@ -1163,12 +1163,22 @@ fn test_custom_sound(file_path: String) -> Result<(), String> {
 
 #[tauri::command]
 fn show_notification(app: tauri::AppHandle, title: String, body: String) -> Result<(), String> {
-    app.notification()
+    // 尝试解析通知图标路径
+    let icon_path = app.path().resource_dir()
+        .ok()
+        .map(|d| d.join("icons").join("128x128.png"))
+        .filter(|p| p.exists());
+
+    let mut builder = app.notification()
         .builder()
         .title(title)
-        .body(body)
-        .show()
-        .map_err(|e| e.to_string())
+        .body(body);
+
+    if let Some(path) = icon_path {
+        builder = builder.icon(path.to_string_lossy());
+    }
+
+    builder.show().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1208,11 +1218,10 @@ fn ensure_floating_window(app: &AppHandle, visible_on_create: bool) -> Result<We
         "floating-window",
         WebviewUrl::App(PathBuf::from("index.html?mode=floating")),
     )
-    .title("Reminder")
+    .title("FloatingPreview")
     .inner_size(320.0, 104.0)
     .resizable(false)
     .decorations(false)
-    .always_on_top(true)
     .skip_taskbar(true)
     .visible(visible_on_create);
 
@@ -1230,13 +1239,43 @@ fn ensure_floating_window(app: &AppHandle, visible_on_create: bool) -> Result<We
         builder
     };
 
-    builder.build().map_err(|e| e.to_string())
+    let window = builder.build().map_err(|e| e.to_string())?;
+
+    // Windows: 禁用 DWM 自动圆角 + 透明边框，避免透明窗口显示白色角落
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND};
+        use windows::Win32::UI::WindowsAndMessaging::{SetWindowLongPtrW, GWL_STYLE};
+        use windows::Win32::Foundation::HWND;
+
+        if let Ok(hwnd) = window.hwnd() {
+            let hwnd_raw = HWND(hwnd.0);
+            unsafe {
+                // 移除 WS_CAPTION 样式，确保无标题栏背景
+                const WS_CAPTION: isize = 0x00C00000;
+                let current_style = SetWindowLongPtrW(hwnd_raw, GWL_STYLE, 0);
+                SetWindowLongPtrW(hwnd_raw, GWL_STYLE, current_style & !WS_CAPTION);
+
+                // 设置透明边框颜色
+                let border_color: u32 = 0xFFFFFFFE;
+                let _ = DwmSetWindowAttribute(hwnd_raw, DWMWA_BORDER_COLOR, &border_color as *const _ as *const _, std::mem::size_of::<u32>() as u32);
+
+                // 禁用 DWM 圆角——圆角由 CSS border-radius + overflow:hidden 实现
+                let corner_preference = DWMWCP_DONOTROUND;
+                let _ = DwmSetWindowAttribute(hwnd_raw, DWMWA_WINDOW_CORNER_PREFERENCE, &corner_preference as *const _ as *const _, std::mem::size_of::<u32>() as u32);
+            }
+        }
+    }
+
+    Ok(window)
 }
 
 fn show_floating_window_now(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("floating-window") {
         if !window.is_visible().unwrap_or(false) {
             window.show().map_err(|e| e.to_string())?;
+            // 移除 TOPMOST 标志，避免干扰 IME 候选字条（输入法）
+            let _ = window.set_always_on_top(false);
         }
     } else {
         let _ = ensure_floating_window(app, true)?;
