@@ -20,6 +20,9 @@ export function useCountdownSync() {
       const state = useHealthStore.getState();
       state.updateCountdowns(countdowns);
 
+      // 空闲时不触发任何预通知/声音/悬浮窗
+      if (state.isIdle) return;
+
       const currentTasks = state.tasks;
 
       for (const id of [...notifiedPre.current]) {

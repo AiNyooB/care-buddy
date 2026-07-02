@@ -617,7 +617,10 @@ fn get_countdowns() -> Vec<CountdownInfo> {
         };
 
         // 如果任务被禁用，使用禁用时间点计算 elapsed，这样时间就"冻结"了
-        let effective_now = if let Some(disabled_at) = timer.disabled_at {
+        // 如果空闲状态，使用进入空闲的时间点冻结倒计时，防止 countdown=0 触发前端预通知
+        let effective_now = if state.is_idle {
+            state.idle_start.unwrap_or(now)
+        } else if let Some(disabled_at) = timer.disabled_at {
             disabled_at
         } else {
             frozen_now
