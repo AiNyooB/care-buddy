@@ -66,3 +66,30 @@ export function minutesToSeconds(minutes: number): number {
 export function secondsToMinutes(seconds: number): number {
   return Math.floor(seconds / 60);
 }
+
+interface StreakDay {
+  date: string;
+  sitBreaks: number;
+  waterCups: number;
+  exercisesCompleted: number;
+  customBreaks: number;
+  eyeCare: number;
+}
+
+/**
+ * 计算连续达标天数（从昨天往回数，当天不算）
+ */
+export function computeStreak(dailyStats: StreakDay[]): number {
+  const statsMap = new Map(dailyStats.map((s) => [s.date, s]));
+  let streak = 0;
+  for (let i = 0; i < 365; i++) {
+    const dateStr = format(subDays(new Date(), i), 'yyyy-MM-dd');
+    const day = statsMap.get(dateStr);
+    if (day && (day.sitBreaks > 0 || day.waterCups > 0 || day.exercisesCompleted > 0 || day.customBreaks > 0 || day.eyeCare > 0)) {
+      streak++;
+    } else if (i > 0) {
+      break;
+    }
+  }
+  return streak;
+}

@@ -23,8 +23,9 @@ import {
   exitLockMode,
   timerSetLockScreenActive,
 } from '../services';
-import { CheckCircle, XCircle } from './Icons';
+import { CheckCircle } from './Icons';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { CircularProgress } from './CircularProgress';
 import { exercises } from '../data/exercises';
 import { guidedExerciseConfigs } from '../data/guided-configs';
@@ -64,43 +65,31 @@ function SecondaryScreenHint() {
 function PageTitle({
   title,
   exerciseList,
-  showList,
-  currentExerciseId,
+  state,
+  currentExerciseIndex,
+  isExerciseMode,
 }: {
   title: string;
   exerciseList: { id: string; name: string }[];
-  showList: boolean;
-  currentExerciseId?: string;
+  state: LockState;
+  currentExerciseIndex: number;
+  isExerciseMode: boolean;
 }) {
-  const { t } = useTranslation();
+  const isExercising = state === 'exercising';
+  const showProgress =
+    isExercising && isExerciseMode && exerciseList.length > 1;
+
   return (
     <div className="text-center">
-      <div className="text-2xl font-semibold text-white mb-3">{title}</div>
-      {showList && exerciseList.length > 0 && (
-        <div className="text-left max-w-[280px] mx-auto">
-          <div className="text-xs uppercase tracking-wider text-white/40 mb-2">
-            {t('lock.todayExercises')}
-          </div>
-          <ul className="space-y-1.5">
-            {exerciseList.map((ex) => {
-              const isCurrent = ex.id === currentExerciseId;
-              return (
-                <li
-                  key={ex.id}
-                  className={
-                    isCurrent
-                      ? 'text-base text-white font-medium'
-                      : 'text-base text-white/50'
-                  }
-                >
-                  <span className="mr-2">•</span>
-                  {ex.name}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
+      <div className="text-sm text-white/60">
+        {title}
+        {showProgress && (
+          <span className="text-white/40">
+            {' · '}
+            {currentExerciseIndex + 1}/{exerciseList.length}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -108,6 +97,7 @@ function PageTitle({
 function ContentBody({
   state,
   isExerciseMode,
+  exerciseList,
   currentExercise,
   currentConfig,
   guidedState,
@@ -118,9 +108,11 @@ function ContentBody({
   hasExercises,
   showExitButton,
   onExit,
+  onStart,
 }: {
   state: LockState;
   isExerciseMode: boolean;
+  exerciseList: { id: string; name: string }[];
   currentExercise: ReturnType<typeof exerciseById> | null;
   currentConfig: GuidedConfig | null;
   guidedState: ReturnType<typeof useGuidedExercise>['state'];
@@ -131,16 +123,48 @@ function ContentBody({
   hasExercises: boolean;
   showExitButton: boolean;
   onExit: () => void;
+  onStart: () => void;
 }) {
   const { t } = useTranslation();
+
+  if (state === 'idle' && isExerciseMode) {
+    return (
+      <div className="flex flex-col items-center gap-8">
+        {exerciseList.length > 0 ? (
+          <ul className="text-center space-y-2">
+            {exerciseList.map((ex, idx) => (
+              <li
+                key={ex.id}
+                className={
+                  idx === 0
+                    ? 'text-3xl font-medium text-white'
+                    : 'text-2xl text-white/70'
+                }
+              >
+                {ex.name}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="text-base text-white/60">
+            {t('lock.noExercises')}
+          </div>
+        )}
+        <Button onClick={onStart} disabled={exerciseList.length === 0}>
+          <CheckCircle size={20} />
+          <span className="ml-1.5">{t('lock.startExercise')}</span>
+        </Button>
+      </div>
+    );
+  }
 
   if (state === 'finished') {
     return (
       <div className="flex flex-col items-center">
-        <div className="size-[120px] rounded-full bg-success/20 flex items-center justify-center mb-4">
-          <CheckCircle size={72} className="text-success" />
+        <div className="size-[140px] rounded-full bg-success/20 flex items-center justify-center mb-6">
+          <CheckCircle size={84} className="text-success" />
         </div>
-        <div className="text-xl font-semibold text-white">
+        <div className="text-2xl font-semibold text-white">
           {t('lock.finished')}
         </div>
       </div>
@@ -153,7 +177,7 @@ function ContentBody({
         exercise={currentExercise}
         guidedState={guidedState}
         guidedConfig={currentConfig}
-        showProgress
+        showProgress={false}
         currentIndex={currentExerciseIndex}
         totalExercises={fullExerciseIds.length}
         onExit={onExit}
@@ -185,10 +209,8 @@ function ContentBody({
             {formatDuration(remaining)}
           </span>
         </CircularProgress>
-        <div className="text-base text-white/70 mt-4">
-          {fullExerciseIds.length > 1
-            ? `${currentExercise.name} (${currentExerciseIndex + 1}/${fullExerciseIds.length})`
-            : currentExercise.name}
+        <div className="text-lg text-white/80 mt-4">
+          {currentExercise.name}
         </div>
       </div>
     );
@@ -247,14 +269,13 @@ function BottomActions({
     return (
       <div className="flex justify-center gap-3">
         {!strictMode && (
-          <Button variant="secondary" onClick={onExit}>
-            <XCircle size={20} />
-            <span className="ml-1.5">{t('guided.exit')}</span>
+          <Button variant="ghost" className="text-white/60" onClick={onExit}>
+            {t('guided.exit')}
           </Button>
         )}
         {canSkip && (
-          <Button variant="secondary" onClick={onSkip}>
-            <span className="ml-1.5">{t('lock.nextExercise')}</span>
+          <Button variant="ghost" className="text-white/60" onClick={onSkip}>
+            {t('lock.nextExercise')}
           </Button>
         )}
       </div>
@@ -265,9 +286,8 @@ function BottomActions({
     return (
       <div className="flex justify-center gap-3">
         {!strictMode && (
-          <Button variant="secondary" onClick={onExit}>
-            <XCircle size={20} />
-            <span className="ml-1.5">{t('guided.exit')}</span>
+          <Button variant="ghost" className="text-white/60" onClick={onExit}>
+            {t('guided.exit')}
           </Button>
         )}
       </div>
@@ -276,18 +296,11 @@ function BottomActions({
 
   if (state === 'idle') {
     return (
-      <div className="flex flex-col items-center gap-3">
-        <Button onClick={onStart}>
-          <CheckCircle size={20} />
-          <span className="ml-1.5">{t('lock.startExercise')}</span>
+      !strictMode && (
+        <Button variant="ghost" className="text-white/60" onClick={onExit}>
+          {t('guided.exit')}
         </Button>
-        {!strictMode && (
-          <Button variant="ghost" className="text-white/60" onClick={onExit}>
-            <XCircle size={20} />
-            <span className="ml-1.5">{t('guided.exit')}</span>
-          </Button>
-        )}
-      </div>
+      )
     );
   }
 
@@ -469,46 +482,71 @@ export function LockScreenSlave() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm animate-[lockFadeIn_0.3s_ease]">
-      <div className="w-full max-w-[480px] p-8 flex flex-col gap-8 animate-[lockScaleIn_0.35s_ease]">
-        <PageTitle
-          title={title}
-          exerciseList={exerciseList}
-          showList={isExerciseMode}
-          currentExerciseId={state === 'exercising' || state === 'finished' ? currentExerciseId : undefined}
-        />
+      <div className="w-full max-w-[480px] p-8 h-full max-h-[696px] flex flex-col animate-[lockScaleIn_0.35s_ease]">
+        <header className="min-h-[60px] flex flex-col justify-center flex-shrink-0">
+          <PageTitle
+            title={title}
+            exerciseList={exerciseList}
+            state={state}
+            currentExerciseIndex={currentExerciseIndex}
+            isExerciseMode={isExerciseMode}
+          />
+        </header>
 
-        <ContentBody
-          state={state}
-          isExerciseMode={isExerciseMode}
-          currentExercise={currentExercise}
-          currentConfig={currentConfig}
-          guidedState={guidedState}
-          currentExerciseIndex={currentExerciseIndex}
-          fullExerciseIds={fullExerciseIds}
-          remaining={remaining}
-          progress={progress}
-          hasExercises={hasExercises}
-          showExitButton={false}
-          onExit={handleExit}
-        />
+        <main className="flex-1 min-h-[280px] flex flex-col items-center justify-center">
+          <ContentBody
+            state={state}
+            isExerciseMode={isExerciseMode}
+            exerciseList={exerciseList}
+            currentExercise={currentExercise}
+            currentConfig={currentConfig}
+            guidedState={guidedState}
+            currentExerciseIndex={currentExerciseIndex}
+            fullExerciseIds={fullExerciseIds}
+            remaining={remaining}
+            progress={progress}
+            hasExercises={hasExercises}
+            showExitButton={false}
+            onExit={handleExit}
+            onStart={handleStartExercise}
+          />
+        </main>
 
-        <BottomActions
-          state={state}
-          isExerciseMode={isExerciseMode}
-          strictMode={strictMode}
-          autoUnlock={autoUnlock}
-          canSkip={canSkip}
-          onStart={handleStartExercise}
-          onExit={handleExit}
-          onSkip={handleSkipExercise}
-          onComplete={handleComplete}
-        />
+        <footer className="min-h-[100px] flex flex-col items-center justify-center flex-shrink-0">
+          <BottomActions
+            state={state}
+            isExerciseMode={isExerciseMode}
+            strictMode={strictMode}
+            autoUnlock={autoUnlock}
+            canSkip={canSkip}
+            onStart={handleStartExercise}
+            onExit={handleExit}
+            onSkip={handleSkipExercise}
+            onComplete={handleComplete}
+          />
+        </footer>
 
-        {state !== 'idle' && strictMode && (
-          <div className="text-center text-white/50 text-sm">
-            {t('lock.strictModeHint')}
-          </div>
-        )}
+        <div className="min-h-[24px] flex items-center justify-center flex-shrink-0">
+          {state !== 'idle' && strictMode && (
+            <div className="text-center text-sm">
+              <span className="text-white/50">{t('lock.strictModeLabel')}</span>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className="ml-1 text-white/70 underline decoration-dotted underline-offset-4 cursor-help" />
+                  }
+                >
+                  {t('lock.emergencyUnlock')}
+                </TooltipTrigger>
+                <TooltipContent className="bg-black/90 border border-white/20 text-white">
+                  <div className="text-xs whitespace-pre-line">
+                    {t('lock.emergencyUnlockTooltip')}
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

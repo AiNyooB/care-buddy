@@ -17,6 +17,7 @@ Thumbs.db
 .trae/
 .claude/
 .hermes/
+.agents/
 
 # Tauri 构建产物
 src-tauri/target/

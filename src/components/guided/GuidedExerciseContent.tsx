@@ -7,7 +7,7 @@
 
 import { useTranslation } from 'react-i18next';
 import { BicepsFlexed } from 'lucide-react';
-import { CheckCircle, XCircle } from '../Icons';
+import { CheckCircle } from '../Icons';
 import { Button } from '@/components/ui/button';
 import type { Exercise, GuidedConfig } from '../../types';
 import type { GuidedExerciseState } from '../../hooks/useGuidedExercise';
@@ -131,7 +131,6 @@ export function GuidedExerciseContent({
       {showExit && onExit && (
         <div className="flex justify-center mt-10 flex-shrink-0">
           <Button variant="ghost" className="text-white/60" onClick={onExit}>
-            <XCircle size={20} />
             {t('guided.exit')}
           </Button>
         </div>

@@ -349,6 +349,7 @@ export function ExercisePanel() {
   const closeExercisePanel = useHealthStore((s) => s.closeExercisePanel);
   const incrementExercisesCompleted = useHealthStore((s) => s.incrementExercisesCompleted);
   const incrementCategoryExercise = useHealthStore((s) => s.incrementCategoryExercise);
+  const addExerciseMinutes = useHealthStore((s) => s.addExerciseMinutes);
 
   if (!exercisePanel.active) return null;
 
@@ -359,6 +360,7 @@ export function ExercisePanel() {
     const handleComplete = (ex: Exercise) => {
       incrementExercisesCompleted();
       incrementCategoryExercise(ex.category);
+      addExerciseMinutes(1);
       closeExercisePanel();
     };
 

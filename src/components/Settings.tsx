@@ -4,7 +4,7 @@ import { useHealthStore } from '../store';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { setAutoStart, saveSettingsToBackend, emitSettingsUpdated, syncTasks, setIdleThreshold, updateTrayLanguage } from '../services';
-import { Shield, Sun, Moon, Monitor, Globe, Plus, X, Bell, Trash2, Timer, LockOpen, RefreshCw, Power, Lock, Dumbbell, type LucideIcon } from 'lucide-react';
+import { Shield, Sun, Moon, Monitor, Globe, Plus, X, Bell, Trash2, Timer, LockOpen, RefreshCw, Power, Lock, Dumbbell, AlertTriangle, Combine, type LucideIcon } from 'lucide-react';
 
 import { ToggleGroup } from '@base-ui/react/toggle-group';
 import { Toggle } from '@base-ui/react/toggle';
@@ -19,6 +19,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
@@ -845,6 +848,9 @@ export function AdvancedSection() {
     await emitSettingsUpdated({ lockScreenExerciseEnabled: checked }).catch(console.error);
   };
 
+  const [strictModeWarningOpen, setStrictModeWarningOpen] = useState(false);
+  const [strictModeCountdown, setStrictModeCountdown] = useState(10);
+
   const handleMergeThresholdChange = async (value: number) => {
     const clamped = Math.max(1, Math.min(30, value));
     updateSettings({ mergeThreshold: clamped });
@@ -854,11 +860,31 @@ export function AdvancedSection() {
   };
 
   const handleStrictModeToggle = async (checked: boolean) => {
-    updateSettings({ strictMode: checked });
+    if (checked) {
+      setStrictModeWarningOpen(true);
+      setStrictModeCountdown(10);
+      return;
+    }
+    updateSettings({ strictMode: false });
     const currentSettings = useHealthStore.getState().settings;
-    await saveSettingsToBackend({ ...currentSettings, strictMode: checked }).catch(console.error);
-    await emitSettingsUpdated({ strictMode: checked }).catch(console.error);
+    await saveSettingsToBackend({ ...currentSettings, strictMode: false }).catch(console.error);
+    await emitSettingsUpdated({ strictMode: false }).catch(console.error);
   };
+
+  const handleStrictModeConfirm = async () => {
+    if (strictModeCountdown > 0) return;
+    updateSettings({ strictMode: true });
+    const currentSettings = useHealthStore.getState().settings;
+    await saveSettingsToBackend({ ...currentSettings, strictMode: true }).catch(console.error);
+    await emitSettingsUpdated({ strictMode: true }).catch(console.error);
+    setStrictModeWarningOpen(false);
+  };
+
+  useEffect(() => {
+    if (!strictModeWarningOpen || strictModeCountdown <= 0) return;
+    const timer = setTimeout(() => setStrictModeCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [strictModeWarningOpen, strictModeCountdown]);
 
   return (
     <div className="space-y-1">
@@ -872,8 +898,11 @@ export function AdvancedSection() {
 
       {settings.lockScreenEnabled && (
         <>
-          <div className="flex items-center justify-between py-2 pl-4">
-            <Label className="text-xs text-muted-foreground">{t('settings.mergeThreshold')}</Label>
+          <SettingRow
+            label={t('settings.mergeReminders')}
+            desc={t('settings.mergeRemindersDesc')}
+            icon={Combine}
+          >
             <div className="flex items-center gap-1.5">
               <Input
                 type="number"
@@ -887,7 +916,7 @@ export function AdvancedSection() {
               />
               <span className="text-xs text-muted-foreground">{t('time.minutes')}</span>
             </div>
-          </div>
+          </SettingRow>
 
           <SettingRow
             label={t('settings.lockScreenExercise')}
@@ -915,6 +944,34 @@ export function AdvancedSection() {
       >
         <Switch checked={settings.strictMode} onCheckedChange={handleStrictModeToggle} />
       </SettingRow>
+
+      <Dialog open={strictModeWarningOpen} onOpenChange={setStrictModeWarningOpen}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle className="text-warning flex items-center gap-2">
+              <AlertTriangle size={16} />
+              {t('settings.strictModeWarningTitle')}
+            </DialogTitle>
+            <DialogDescription>
+              {t('settings.strictModeWarningDesc')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setStrictModeWarningOpen(false)}>
+              {t('settings.strictModeWarningCancel')}
+            </Button>
+            <Button
+              onClick={handleStrictModeConfirm}
+              disabled={strictModeCountdown > 0}
+              variant="destructive"
+            >
+              {strictModeCountdown > 0
+                ? `${strictModeCountdown}s`
+                : t('settings.strictModeWarningConfirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

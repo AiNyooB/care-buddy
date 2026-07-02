@@ -13,21 +13,7 @@ import { useHealthStore } from '../store';
 import { BicepsFlexed, Timer, Activity, PersonStanding, Eye, GlassWater, Plus } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
-
-function computeStreak(dailyStats: { date: string; exercisesCompleted: number; sitBreaks: number; waterCups: number; customBreaks: number; eyeCare: number }[]): number {
-  const statsMap = new Map(dailyStats.map((s) => [s.date, s]));
-  let streak = 0;
-  for (let i = 0; i < 365; i++) {
-    const dateStr = format(subDays(new Date(), i), 'yyyy-MM-dd');
-    const day = statsMap.get(dateStr);
-    if (day && (day.sitBreaks > 0 || day.waterCups > 0 || day.exercisesCompleted > 0 || day.customBreaks > 0 || day.eyeCare > 0)) {
-      streak++;
-    } else if (i > 0) {
-      break;
-    }
-  }
-  return streak;
-}
+import { computeStreak } from '@/utils/time';
 
 const DAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -209,16 +195,23 @@ export function StatsDashboard() {
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
-          <ChartContainer config={exerciseChartConfig} className="!aspect-auto w-full" style={{ height: '135px' }}>
-            <BarChart data={biweeklyData} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="date" tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} interval={1} />
-              <YAxis tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} allowDecimals={false} width={28} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <ReferenceLine y={avgExerciseMinutes} stroke="var(--muted-foreground)" strokeDasharray="3 3" strokeWidth={1} />
-              <Bar dataKey="minutes" fill="var(--color-minutes)" radius={[3, 3, 0, 0]} barSize={14} />
-            </BarChart>
-          </ChartContainer>
+          {biweeklyData.every(d => d.minutes === 0) ? (
+            <div className="flex h-[135px] flex-col items-center justify-center gap-1 text-center text-muted-foreground">
+              <Activity size={24} className="opacity-40" />
+              <span className="text-xs">{t('stats.noExerciseData', { defaultValue: '暂无运动数据，开始运动吧' })}</span>
+            </div>
+          ) : (
+            <ChartContainer config={exerciseChartConfig} className="!aspect-auto w-full" style={{ height: '135px' }}>
+              <BarChart data={biweeklyData} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} interval={1} />
+                <YAxis tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} allowDecimals={false} width={28} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <ReferenceLine y={avgExerciseMinutes} stroke="var(--muted-foreground)" strokeDasharray="3 3" strokeWidth={1} />
+                <Bar dataKey="minutes" fill="var(--color-minutes)" radius={[3, 3, 0, 0]} barSize={14} />
+              </BarChart>
+            </ChartContainer>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "clean": "powershell -ExecutionPolicy Bypass -File scripts/clean-data.ps1"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

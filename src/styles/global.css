@@ -44,9 +44,6 @@
   --spacing-grid-offset: var(--grid-offset);
   --spacing-grid-content: var(--grid-content);
 
-  /* Grid 调试色 */
-  --color-grid-debug: var(--grid-debug-color);
-
   /* ===== Chart Colors ===== */
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -257,10 +254,6 @@
   --grid-gap: 12px;
   --grid-offset: 24px;
   --grid-content: calc(64px * 6 + 12px * 5); /* 444px */
-
-  /* Grid 调试色（Figma 定义的 FF0000 / 10%） */
-  --grid-debug-color: #FF0000;
-  --grid-debug-alpha: 0.1;
 }
 
 @keyframes lockFadeIn {

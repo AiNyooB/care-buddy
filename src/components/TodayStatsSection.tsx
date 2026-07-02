@@ -11,27 +11,13 @@ import {
   PaginationItem,
   PaginationLink,
 } from '@/components/ui/pagination';
-import { BarChart, Bar, XAxis, YAxis, ReferenceLine } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { ChartContainer, type ChartConfig } from '@/components/ui/chart';
 import type { ExerciseCategory, PackageType } from '../types';
+import { computeStreak } from '@/utils/time';
 
 const CATEGORIES: ExerciseCategory[] = ['spine', 'circulation', 'metabolism', 'vision', 'wrist'];
 const PACKAGES: PackageType[] = ['package-quick', 'package-standard', 'package-deep'];
-
-function computeStreak(dailyStats: { date: string; exercisesCompleted: number; sitBreaks: number; waterCups: number; customBreaks: number }[]): number {
-  const statsMap = new Map(dailyStats.map((s) => [s.date, s]));
-  let streak = 0;
-  for (let i = 0; i < 365; i++) {
-    const dateStr = format(subDays(new Date(), i), 'yyyy-MM-dd');
-    const day = statsMap.get(dateStr);
-    if (day && (day.sitBreaks > 0 || day.waterCups > 0 || day.exercisesCompleted > 0 || day.customBreaks > 0)) {
-      streak++;
-    } else if (i > 0) {
-      break;
-    }
-  }
-  return streak;
-}
 
 function formatWorkMinutes(minutes: number): { numerical: ReactNode; unit: string } {
   if (minutes >= 60) {
@@ -243,11 +229,9 @@ export function TodayStatsSection() {
             </Toggle>
           </div>
         </div>
-        <ChartContainer config={chartConfig} className="!aspect-auto mt-2 w-full [&_*]:outline-none" style={{ height: 'calc(176px - 32px - 8px - 16px)' }}>
-          <BarChart data={chartData} margin={{ top: 20, right: 0, left: -12, bottom: -6 }}>
-            {yTicks.filter(t => t >= 0).map(tick => (
-              <ReferenceLine key={tick} y={tick} stroke="var(--border)" strokeDasharray="3 3" />
-            ))}
+        <ChartContainer config={chartConfig} className="!aspect-auto mt-2 w-full [&_*]:outline-none" style={{ height: '120px' }}>
+          <BarChart data={chartData} margin={{ top: 20, right: 0, left: -12, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
             <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
             <YAxis domain={[0, maxCount]} ticks={yTicks} width={28} tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
             <Bar dataKey="count" fill="var(--color-count)" radius={[4, 4, 0, 0]} barSize={18} label={{ position: 'top', fontSize: 11, fontWeight: 600, fill: 'var(--foreground)' }} />

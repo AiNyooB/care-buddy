@@ -11,7 +11,6 @@ import { Settings } from '@/components/Settings';
 import { ExerciseLibrary } from '@/components/ExerciseLibrary';
 import { StatsDashboard } from '@/components/StatsDashboard';
 import { ExercisePanel } from '@/components/ExercisePanel';
-import { GridDebug } from '@/components/GridDebug';
 import { Toaster } from '@/components/ui/sonner';
 
 import { useHealthStore } from '@/store';
@@ -142,7 +141,6 @@ export default function App() {
       {/* 内容区 */}
       <main className="relative flex-1 overflow-y-auto px-2 pb-2">
         {/* 页面级 6 列网格调试覆盖线（z-50），相对于 main 的 var(--grid-offset) = 24px = 窗口边缘 24px */}
-        <GridDebug />
         <MotionConfig reducedMotion="user">
           <div
             className={

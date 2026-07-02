@@ -22,7 +22,6 @@ export interface Task {
   snoozeMinutes: number;
   scheduleType: ScheduleType;
   dailyTime: string | null; // 'HH:MM'，仅 scheduleType='daily' 时有意义
-  debugIntervalSeconds?: number; // 测试用：覆盖 interval，单位秒
   // 运动相关字段
   isExerciseTask?: boolean;
   exerciseIds?: string[];
