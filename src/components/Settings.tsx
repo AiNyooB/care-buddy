@@ -137,7 +137,7 @@ function createEmptyTask(): Task {
     enabled: true,
     icon: 'exercise',
     lockDuration: 60,
-    autoResetOnIdle: false,
+    autoResetOnIdle: useHealthStore.getState().settings.autoResetOnIdle,
     preNotificationSeconds: 10,
     snoozeMinutes: 5,
     scheduleType: 'interval',
@@ -587,6 +587,10 @@ export function GeneralSection() {
 
   const [idleInputValue, setIdleInputValue] = useState(String(settings.idleThreshold));
 
+  useEffect(() => {
+    setIdleInputValue(String(settings.idleThreshold));
+  }, [settings.idleThreshold]);
+
   const ThemeIcon = settings.theme === 'dark' ? Moon : settings.theme === 'light' ? Sun : Monitor;
 
   const handleThemeSelect = async (value: 'light' | 'dark' | 'system') => {
@@ -623,9 +627,8 @@ export function GeneralSection() {
 
   const handleResetOnIdleToggle = async (checked: boolean) => {
     updateSettings({ autoResetOnIdle: checked });
-    const currentTasks = useHealthStore.getState().tasks;
-    currentTasks.forEach((t) => updateTask(t.id, { autoResetOnIdle: checked }));
-    syncTasks(currentTasks.map((t) => ({ ...t, autoResetOnIdle: checked })));
+    useHealthStore.getState().tasks.forEach((t) => updateTask(t.id, { autoResetOnIdle: checked }));
+    syncTasks(useHealthStore.getState().tasks.map((t) => ({ ...t, autoResetOnIdle: checked })));
     const currentSettings = useHealthStore.getState().settings;
     await saveSettingsToBackend({ ...currentSettings, autoResetOnIdle: checked }).catch(console.error);
     await emitSettingsUpdated({ autoResetOnIdle: checked }).catch(console.error);
