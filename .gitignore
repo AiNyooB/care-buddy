@@ -1,0 +1,67 @@
+# 依赖目录
+node_modules/
+dist/
+
+# 锁定文件（需要保留用于 CI/CD）
+# package-lock.json
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE 及 AI 工具配置
+.vscode/
+.idea/
+.qoder/
+.opencode/
+.trae/
+.claude/
+.hermes/
+.agents/
+.codebuddy/
+.superpowers/
+.impeccable/
+.mimocode/
+
+# Tauri 构建产物
+src-tauri/target/
+src-tauri/gen/
+
+# 混入源码的构建产物
+/src/main.js.js
+
+# Tauri 签名密钥
+.tauri-keys
+.tauri-keys.pub
+*.key
+*.pem
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 构建缓存
+.npm-cache/
+
+# 文档 & 设计会话
+*.docx
+docs/
+NetSpeed-Dynamic-main
+NetSpeed-Dynamic-Releases-v2.3.9
+.vs/
+countdown-section-design/
+sketches/
+
+# 其他
+打包指南.md
+A2Tools-DPS-Meter-main/
+aletheia_AION2_DPS_Meter-main/
+
+# 运行时日志
+log.txt
+
+# 构建缓存目录
+dist-node/
+
+.bitfun/
