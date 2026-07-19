@@ -122,6 +122,7 @@ export default function App() {
             <TabsTrigger
               value="stats"
               disabled
+              hidden
               className="h-6 gap-1.5 rounded-md px-1.5 text-sm data-[selected]:bg-tab-active-bg data-[selected]:text-foreground data-[selected]:shadow-none"
             >
               <BarChart3 size={16} strokeWidth={1.5} />

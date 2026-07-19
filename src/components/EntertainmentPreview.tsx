@@ -411,7 +411,7 @@ export function EntertainmentPreview() {
                     <div className="flex min-w-0 flex-col justify-center leading-none">
                       <span className="text-[10px] font-medium text-white/55">{t('settings.entertainmentCapsuleIdle')}</span>
                       <span className="text-sm font-semibold text-white/90 tabular-nums">
-                        {entertainmentCountdown
+                        {entertainmentCountdown && entertainmentCountdown.remaining > 0
                           ? `${String(Math.floor(entertainmentCountdown.remaining / 60)).padStart(2, '0')}:${String(entertainmentCountdown.remaining % 60).padStart(2, '0')}`
                           : '--:--'}
                       </span>

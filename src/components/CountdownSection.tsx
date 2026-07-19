@@ -400,7 +400,7 @@ export function CountdownSection() {
             value={remainingPercent}
             max={100}
             min={0}
-            gaugePrimaryColor="var(--foreground)"
+            gaugePrimaryColor="var(--muted-foreground)"
             gaugeSecondaryColor="var(--muted)"
             className="size-full max-h-full"
           >

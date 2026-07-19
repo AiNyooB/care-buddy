@@ -30,8 +30,8 @@ const RING_CONFIG = [
 // 昨日对比 diff 格式化
 function formatDiff(diff: number): { symbol: string; className: string } | null {
   if (diff === 0) return null;
-  if (diff > 0) return { symbol: `↑${diff}`, className: 'text-chart-2' };
-  return { symbol: `↓${Math.abs(diff)}`, className: 'text-destructive' };
+  if (diff > 0) return { symbol: `↑${diff}`, className: 'text-foreground' };
+  return { symbol: `↓${Math.abs(diff)}`, className: 'text-foreground' };
 }
 
 // ============================================================================
@@ -260,7 +260,7 @@ export function HealthMetricsSection() {
               {exerciseDiff !== null && (() => {
                 const d = formatDiff(exerciseDiff);
                 return d ? (
-                  <span className={cn('text-type-micro', d.className)}>{d.symbol}</span>
+                  <span className={cn('text-type-caption font-medium', d.className)}>{d.symbol}</span>
                 ) : null;
               })()}
             </div>
@@ -316,7 +316,7 @@ export function HealthMetricsSection() {
                 {diff !== null && (() => {
                   const d = formatDiff(diff);
                   return d ? (
-                    <span className={cn('text-type-micro ml-auto', d.className)}>{d.symbol}</span>
+                    <span className={cn('text-type-caption font-medium ml-auto', d.className)}>{d.symbol}</span>
                   ) : null;
                 })()}
               </div>

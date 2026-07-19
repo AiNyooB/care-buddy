@@ -1568,12 +1568,12 @@ fn start_timer_thread(app_handle: AppHandle) {
             }
 
             // 空闲进入时关闭娱乐模式（在 timer_state 锁外执行，避免死锁）
+            // 注意：保留 last_reminder_at（倒计时起点），避免空闲恢复后 countdown-update 读到 None 返回 00:00。
             if idle_entered {
                 if let Some(ent_state) = app_handle.try_state::<EntertainmentModeState>() {
                     let mut guard = ent_state.0.lock().unwrap();
                     guard.is_active = false;
                     guard.grace_deadline = None;
-                    guard.last_reminder_at = None;
                     guard.last_sent = None;
                     guard.snoozed_until = None;
                 }
@@ -1627,7 +1627,10 @@ fn start_timer_thread(app_handle: AppHandle) {
                         guard.grace_deadline = None;
                         if !prev_active {
                             guard.is_active = true;
-                            guard.last_reminder_at = Some(Instant::now());
+                            // 保留已有的 last_reminder_at（空闲恢复场景），仅首次激活时设 now
+                            if guard.last_reminder_at.is_none() {
+                                guard.last_reminder_at = Some(Instant::now());
+                            }
                             let _ = app_handle.emit("entertainment-mode-changed", serde_json::json!({ "active": true }));
                             // 娱乐窗口常驻：激活时立即显示（idle 态显示统一倒计时）
                             let _ = show_entertainment_window_now(&app_handle);
