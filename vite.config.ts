@@ -20,12 +20,26 @@ export default defineConfig({
     target: ['es2021', 'chrome100', 'safari13'],
     minify: 'esbuild',
     sourcemap: false,
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom'],
-          ui: ['lucide-react', 'motion', 'embla-carousel-react', 'embla-carousel-autoplay'],
-          charts: ['recharts'],
+        manualChunks(id: string) {
+          if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/')) {
+            return 'vendor';
+          }
+          if (id.includes('node_modules/recharts')) return 'charts';
+          if (
+            id.includes('node_modules/lucide-react') ||
+            id.includes('node_modules/motion') ||
+            id.includes('node_modules/embla')
+          ) {
+            return 'ui';
+          }
+          if (id.includes('node_modules/i18next') || id.includes('node_modules/react-i18next')) {
+            return 'i18n';
+          }
+          if (id.includes('node_modules/@tauri-apps')) return 'tauri';
+          if (id.includes('node_modules/zustand')) return 'state';
         },
       },
     },
