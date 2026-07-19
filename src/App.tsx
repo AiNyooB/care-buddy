@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LayoutPanelTop, BicepsFlexed, BarChart3 } from 'lucide-react';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
@@ -159,6 +159,7 @@ export default function App() {
               (settingsOpen ? '' : 'p-4')
             }
           >
+            <Suspense fallback={null}>
             <AnimatePresence mode="wait" initial={false}>
               {settingsOpen ? (
                 <motion.div
@@ -191,6 +192,7 @@ export default function App() {
                 </motion.div>
               )}
             </AnimatePresence>
+            </Suspense>
           </div>
         </MotionConfig>
       </main>

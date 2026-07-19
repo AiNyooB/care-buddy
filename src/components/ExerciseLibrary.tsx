@@ -6,7 +6,6 @@ import { guidedExerciseConfigs } from '../data/guided-configs';
 import type { Exercise, ExerciseCategory } from '../types';
 import { Play, Target, CheckCircle, AudioWaveform, Clock } from './Icons';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -158,12 +157,9 @@ function ExerciseRow({
       <ItemContent>
         <ItemTitle className="items-center gap-1.5 text-foreground">
           {exercise.name}
-          <Badge
-            variant="outline"
-            style={{ color: priority.color, borderColor: priority.color }}
-          >
+          <span className="text-type-caption font-normal text-muted-foreground">
             {t('exercise.priority' + exercise.priority.charAt(0).toUpperCase() + exercise.priority.slice(1))}
-          </Badge>
+          </span>
         </ItemTitle>
         <ItemDescription className="line-clamp-1">{exercise.description}</ItemDescription>
       </ItemContent>
