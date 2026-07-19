@@ -483,7 +483,7 @@ fn start_session_monitor(app_handle: tauri::AppHandle) {
                 None,
             ).unwrap_or(HWND::default());
 
-            if hwnd.0 != std::ptr::null_mut() {
+            if !hwnd.0.is_null() {
                 let _ = WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION);
 
                 let mut msg = MSG::default();
@@ -578,7 +578,7 @@ struct TaskTriggeredPayload {
 
 // 确定性主任务排序：remaining 升序（触发时均为 0，故退化为 id 升序）后 id 升序，
 // 避免 HashMap 迭代序导致锁屏"主锻炼任务"随机。正常分发与自愈路径共用。
-fn sort_triggers(vec: &mut Vec<(TaskTriggeredPayload, u64)>) {
+fn sort_triggers(vec: &mut [(TaskTriggeredPayload, u64)]) {
     vec.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.id.cmp(&b.0.id)));
 }
 
@@ -926,7 +926,7 @@ fn get_countdowns() -> Vec<CountdownInfo> {
             total_secs + wait_time
         } else {
             let elapsed = effective_now.saturating_duration_since(timer.reset_time).as_secs();
-            if elapsed >= total_secs { 0 } else { total_secs - elapsed }
+            total_secs.saturating_sub(elapsed)
         };
         
         let snooze_remaining = if timer.reset_time > effective_now {
@@ -1332,8 +1332,8 @@ fn start_timer_thread(app_handle: AppHandle) {
                         if !covered_indices.contains(&i) {
                             let label = format!("lock-slave-{}", i);
                             if let Some(win) = app_handle.get_webview_window(&label) {
-                                let _ = win.set_position(m.position().clone());
-                                let _ = win.set_size(tauri::Size::Physical(m.size().clone()));
+                                let _ = win.set_position(*m.position());
+                                let _ = win.set_size(tauri::Size::Physical(*m.size()));
                                 let _ = win.set_fullscreen(true);
                             } else if args.is_some() {
                                 let is_primary = primary_monitor
@@ -1354,7 +1354,7 @@ fn start_timer_thread(app_handle: AppHandle) {
             let mut idle_status_changed = false;
             let mut idle_entered = false;  // 标志：刚进入空闲，用于锁外清理娱乐状态
             let current_idle_status;
-            let has_triggered_tasks;
+            
 
             {
                 let mut state = get_timer_state().lock().unwrap();
@@ -1765,7 +1765,7 @@ fn start_timer_thread(app_handle: AppHandle) {
 
             // 浮窗可见性同步延后到分发之后：通知模式分发会立即重置 triggered，
             // 此处重算后同步可避免该帧 has_triggered_tasks 仍为 true 导致的浮窗单帧闪现（#5）。
-            has_triggered_tasks = {
+            let has_triggered_tasks = {
                 let s = get_timer_state().lock().unwrap();
                 s.tasks.values().any(|t| t.triggered)
             };
@@ -2946,8 +2946,8 @@ fn create_slave_window(app: &AppHandle, monitor: &tauri::Monitor, task: Option<&
         .focused(true)
         .build() {
         Ok(slave) => {
-            let _ = slave.set_position(monitor.position().clone());
-            let _ = slave.set_size(tauri::Size::Physical(monitor.size().clone()));
+            let _ = slave.set_position(*monitor.position());
+            let _ = slave.set_size(tauri::Size::Physical(*monitor.size()));
             let _ = slave.show();
             let _ = slave.set_focus();
             let _ = slave.set_fullscreen(true);
