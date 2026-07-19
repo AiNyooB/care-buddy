@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { LayoutPanelTop, BicepsFlexed } from 'lucide-react';
+import { LayoutPanelTop, BicepsFlexed, BarChart3 } from 'lucide-react';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -8,7 +8,6 @@ import { WindowControls } from '@/components/WindowControls';
 import { Dashboard } from '@/components/Dashboard';
 import { Settings } from '@/components/Settings';
 import { ExerciseLibrary } from '@/components/ExerciseLibrary';
-import { StatsDashboard } from '@/components/StatsDashboard';
 import { ExercisePanel } from '@/components/ExercisePanel';
 import { Toaster } from '@/components/ui/sonner';
 
@@ -119,6 +118,14 @@ export default function App() {
               <BicepsFlexed size={16} strokeWidth={1.5} />
               <span>{t('tabs.exercise', { defaultValue: '活动' })}</span>
             </TabsTrigger>
+            <TabsTrigger
+              value="stats"
+              disabled
+              className="h-6 gap-1.5 rounded-md px-1.5 text-sm data-[selected]:bg-tab-active-bg data-[selected]:text-foreground data-[selected]:shadow-none"
+            >
+              <BarChart3 size={16} strokeWidth={1.5} />
+              <span>{t('tabs.stats', { defaultValue: '统计' })}</span>
+            </TabsTrigger>
           </TabsList>
         </Tabs>
 
@@ -179,7 +186,6 @@ export default function App() {
                 >
                   {viewMode === 'main' && <Dashboard />}
                   {viewMode === 'exercise' && <ExerciseLibrary />}
-                  {viewMode === 'stats' && <StatsDashboard />}
                 </motion.div>
               )}
             </AnimatePresence>

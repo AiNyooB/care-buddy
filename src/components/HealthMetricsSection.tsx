@@ -172,10 +172,6 @@ export function HealthMetricsSection() {
               <Target size={14} />
               {t('statCards.goalSettings', { defaultValue: '指标设定' })}
             </DropdownMenuItem>
-            <DropdownMenuItem disabled>
-              <BarChart3 size={14} />
-              {t('statCards.weeklyReport', { defaultValue: '周报' })}
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { emit } from '@tauri-apps/api/event';
 import { useHealthStore } from '../store';
 import 'number-flow';
-import { Pause, Play, RotateCcw, EllipsisVertical, ChevronUp } from 'lucide-react';
+import { Pause, Play, RotateCcw, EllipsisVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -173,16 +173,6 @@ export function CountdownSection() {
   const remainingPercent = mainTask
     ? Math.min(100, Math.max(0, (mainTask.remaining / (mainTask.task.interval * 60)) * 100))
     : 0;
-
-  // 调试日志：主计时卡状态
-  useEffect(() => {
-    const taskDetails = enabledTasks.map(t => {
-      const ts = taskStates[t.id];
-      return `${t.id}=倒计时${ts?.countdown ?? '无'}状态${ts?.status ?? '无'}`;
-    }).join(', ');
-    // console.log('[主计时卡] 当前任务:', mainTask?.task.id ?? '(无)', '剩余:', mainTask?.remaining ?? '(无)');
-    // console.log('[主计时卡] 运行中:', runningCount, '各任务:', taskDetails);
-  }, [mainTask, runningCount, enabledTasks, taskStates]);
 
   const handleTogglePause = async (taskId: string) => {
     const ts = taskStates[taskId];
@@ -476,10 +466,6 @@ export function CountdownSection() {
         </div>
       </Card>
 
-      {/* ================================================================ */}
-      {/* 胶囊指示器 — 独立元素，放在列4右侧 */}
-      {/* ================================================================ */}
-      {/* 提醒卡片区 — 绝对定位（单提醒时合并显示，不渲染此区域） */}
       {/* ================================================================ */}
       {showCardList && (
       <div
