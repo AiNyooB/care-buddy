@@ -101,10 +101,10 @@ export const DEFAULT_SETTINGS = {
   floatingOpacity: 55,
   floatingSnoozeMinutes: 5,
   entertainmentOpacity: 70,
-  entertainmentSnoozeMinutes: 10,
+  entertainmentSnoozeMinutes: 15,
   entertainmentApps: [],
   entertainmentIdleThreshold: 30,
-  entertainmentReminderMinutes: 20,
+  entertainmentReminderMinutes: 45,
   entertainmentExitThreshold: 1, // 离开娱乐应用后宽限 1 分钟退出（对齐后端默认 60 秒）
   entertainmentMountRecoverySeconds: 10, // Rust-I4：mount 补救窗口（秒），覆盖 React mount 延迟导致的事件丢失
 };

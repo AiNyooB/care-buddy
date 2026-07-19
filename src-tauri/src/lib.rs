@@ -149,8 +149,8 @@ impl Default for EntertainmentModeInner {
             grace_deadline: None,
             last_sent: None,
             opacity: 70,
-            snooze_minutes: 10,
-            reminder_seconds: 1200,         // 默认 20 分钟
+            snooze_minutes: 15,
+            reminder_seconds: 2700,         // 默认 45 分钟
             last_reminder_at: None,
             // mount 补救窗口：娱乐窗口首次创建时 React mount 完成前，entertainment-task-triggered
             // 事件会丢失。EntertainmentPreview mount 后调 getCurrentTriggeredTask 拉取 last_sent 自愈。
@@ -1634,6 +1634,7 @@ fn start_timer_thread(app_handle: AppHandle) {
                             let _ = app_handle.emit("entertainment-mode-changed", serde_json::json!({ "active": true }));
                             // 娱乐窗口常驻：激活时立即显示（idle 态显示统一倒计时）
                             let _ = show_entertainment_window_now(&app_handle);
+                            slide_out_and_hide(&app_handle, "floating-window");
                         }
                     } else if prev_active {
                         // 前台不匹配但之前激活：进入或保持宽限期
@@ -1650,7 +1651,7 @@ fn start_timer_thread(app_handle: AppHandle) {
                             guard.last_reminder_at = None;
                             guard.snoozed_until = None;
                             let _ = app_handle.emit("entertainment-mode-changed", serde_json::json!({ "active": false }));
-                            hide_entertainment_window(&app_handle);
+                            slide_out_and_hide(&app_handle, "entertainment-window");
                         }
                         // 宽限期内：保持 is_active = true，不 emit 事件（前端无感）
                     }
@@ -1802,7 +1803,7 @@ fn start_timer_thread(app_handle: AppHandle) {
                         let g = s.0.lock().unwrap();
                         (g.reminder_seconds, g.last_reminder_at, g.snoozed_until, g.snooze_minutes)
                     }
-                    None => (1200u64, None, None, 10u32),
+                    None => (2700u64, None, None, 10u32),
                 };
                 let now = Instant::now();
                 if let Some(until) = snoozed_until {
@@ -2069,6 +2070,16 @@ fn get_saved_floating_position() -> Option<(f64, f64)> {
     get_saved_capsule_position()
 }
 
+/// 将已有窗口移动到共享胶囊位置（物理像素）
+/// 首次创建时由 ensure_* 设置位置，show 已存在窗口时由本函数同步
+fn sync_window_position(app: &AppHandle, label: &str) {
+    if let Some((sx, sy)) = get_saved_capsule_position() {
+        if let Some(window) = app.get_webview_window(label) {
+            let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(sx as i32, sy as i32)));
+        }
+    }
+}
+
 fn ensure_floating_window(app: &AppHandle, visible_on_create: bool) -> Result<WebviewWindow, String> {
     if let Some(window) = app.get_webview_window("floating-window") {
         return Ok(window);
@@ -2145,17 +2156,15 @@ fn ensure_floating_window(app: &AppHandle, visible_on_create: bool) -> Result<We
 }
 
 fn show_floating_window_now(app: &AppHandle) -> Result<(), String> {
-    // 注意：always_on_top 在独占全屏游戏下无效（独占全屏接管显示输出），
-    // 边框全屏（borderless fullscreen）下有效。后续可考虑用 Win32 API 检测全屏状态。
     if let Some(window) = app.get_webview_window("floating-window") {
-        // 先置顶再显示，避免窗口短暂出现在其他窗口后面
+        sync_window_position(app, "floating-window");
         let _ = window.set_always_on_top(true);
         if !window.is_visible().unwrap_or(false) {
             window.show().map_err(|e| e.to_string())?;
         }
     } else {
         let window = ensure_floating_window(app, true)?;
-        // 首次创建：触发时强制置顶
+        sync_window_position(app, "floating-window");
         window.set_always_on_top(true).map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -2183,7 +2192,8 @@ fn ensure_entertainment_window(app: &AppHandle, visible_on_create: bool) -> Resu
     .resizable(false)
     .decorations(false)
     .skip_taskbar(true)
-    .visible(false)
+    .always_on_top(true)
+    .visible(visible_on_create)
     .transparent(true)
     .background_color(tauri::utils::config::Color(0, 0, 0, 0))
     .shadow(false);
@@ -2227,28 +2237,18 @@ fn ensure_entertainment_window(app: &AppHandle, visible_on_create: bool) -> Resu
 
     let window = builder.build().map_err(|e| e.to_string())?;
 
-    if visible_on_create {
-        let app_clone = app.clone();
-        thread::spawn(move || {
-            thread::sleep(Duration::from_millis(100));
-            if let Some(window) = app_clone.get_webview_window("entertainment-window") {
-                let _ = window.show();
-            }
-        });
-    }
-
     Ok(window)
 }
 
 fn show_entertainment_window_now(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("entertainment-window") {
-        let _ = window.set_always_on_top(true);
+        sync_window_position(app, "entertainment-window");
         if !window.is_visible().unwrap_or(false) {
             window.show().map_err(|e| e.to_string())?;
         }
     } else {
-        let window = ensure_entertainment_window(app, true)?;
-        window.set_always_on_top(true).map_err(|e| e.to_string())?;
+        let _window = ensure_entertainment_window(app, true)?;
+        sync_window_position(app, "entertainment-window");
     }
     Ok(())
 }
@@ -2257,6 +2257,86 @@ fn hide_entertainment_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("entertainment-window") {
         let _ = window.hide();
         let _ = window.set_always_on_top(false);
+    }
+}
+
+// 窗口滑出动画：向上偏移，然后隐藏
+fn slide_out_and_hide(app: &AppHandle, label: &str) {
+    #[cfg(target_os = "windows")]
+    {
+        use std::ffi::c_void;
+        use windows::Win32::Foundation::{HWND, RECT};
+        use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER};
+
+        let window = match app.get_webview_window(label) {
+            Some(w) => w,
+            None => return,
+        };
+        let raw = match window.hwnd() {
+            Ok(h) => h,
+            Err(_) => return,
+        };
+        let hwnd = HWND(raw.0);
+
+        let mut rect = RECT::default();
+        unsafe {
+            if GetWindowRect(hwnd, &mut rect).is_err() {
+                let _ = window.hide();
+                return;
+            }
+        }
+
+        let origin_y = rect.top;
+        let center_x = (rect.left + rect.right) / 2;
+        let w = rect.right - rect.left;
+        let h = rect.bottom - rect.top;
+
+        let hwnd_val = raw.0 as isize;
+        let label_owned = label.to_string();
+        let app_clone = app.clone();
+
+        thread::spawn(move || {
+            let hwnd = HWND(hwnd_val as *mut c_void);
+            let duration = 200.0;
+            let start = Instant::now();
+
+            loop {
+                let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+                let t = (elapsed / duration).min(1.0);
+                let offset = (30.0 * t).round() as i32;
+
+                unsafe {
+                    let _ = SetWindowPos(
+                        hwnd,
+                        HWND::default(),
+                        center_x - w / 2,
+                        origin_y - offset,
+                        w,
+                        h,
+                        SWP_NOACTIVATE | SWP_NOZORDER,
+                    );
+                }
+
+                if t >= 1.0 {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(8));
+            }
+
+            // 等前端 CSS 过渡完成
+            thread::sleep(Duration::from_millis(200));
+            if let Some(win) = app_clone.get_webview_window(&label_owned) {
+                let _ = win.hide();
+                let _ = win.set_always_on_top(false);
+            }
+        });
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Some(window) = app.get_webview_window(label) {
+            let _ = window.hide();
+        }
     }
 }
 
@@ -2760,15 +2840,15 @@ fn is_entertainment_foreground(app: &AppHandle) -> bool {
 }
 
 fn sync_floating_visibility(app: &AppHandle, has_triggered_tasks: bool) {
-    // 本函数仅管 floating 窗口的 always/on-trigger 显示策略
-    // 娱乐模式有独立的 entertainment-window，互不干扰
-    // 娱乐模式激活时隐藏浮窗，避免两窗口并存
+    // 翻页器可见性策略：动画由 timer 循环切换点触发。此处仅做兜底隐藏。
     let entertainment_active = app.try_state::<EntertainmentModeState>()
         .map(|s| s.0.lock().unwrap().is_active)
         .unwrap_or(false);
     if entertainment_active {
         if let Some(window) = app.get_webview_window("floating-window") {
-            let _ = window.hide();
+            if window.is_visible().unwrap_or(false) {
+                let _ = window.hide();
+            }
         }
         return;
     }
@@ -2785,22 +2865,18 @@ fn sync_floating_visibility(app: &AppHandle, has_triggered_tasks: bool) {
         return;
     }
 
-    // floating + always：窗口常驻
-    // floating + on-trigger：仅触发时显示
-    if let Some(window) = app.get_webview_window("floating-window") {
+    if let Some(_window) = app.get_webview_window("floating-window") {
         if display_strategy == "on-trigger" {
             if has_triggered_tasks {
-                let _ = window.set_always_on_top(true);
-                let _ = window.show();
+                let _ = show_floating_window_now(app);
             } else {
-                let _ = window.hide();
-                let _ = window.set_always_on_top(false);
+                let _ = _window.hide();
+                let _ = _window.set_always_on_top(false);
             }
         } else {
-            // always
-            let _ = window.set_always_on_top(true);
-            if !window.is_visible().unwrap_or(false) {
-                let _ = window.show();
+            let _ = _window.set_always_on_top(true);
+            if !_window.is_visible().unwrap_or(false) {
+                let _ = show_floating_window_now(app);
             }
         }
     }
@@ -3262,17 +3338,7 @@ pub fn run() {
             }
 
             // 启动时预创建娱乐模式窗口（若开关已启用），避免首次触发时 WebView2 冷启动延迟
-            {
-                let app_handle = app.handle().clone();
-                let ent_enabled = app.try_state::<EntertainmentModeState>()
-                    .map(|s| s.0.lock().unwrap().enabled)
-                    .unwrap_or(false);
-                if ent_enabled {
-                    std::thread::spawn(move || {
-                        let _ = ensure_entertainment_window(&app_handle, false);
-                    });
-                }
-            }
+            // 注：预创建已被移除，窗口由 show_entertainment_window_now 按需创建
 
             // 启动后端定时器线程
             start_timer_thread(app.handle().clone());
