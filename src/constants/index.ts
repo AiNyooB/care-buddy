@@ -176,6 +176,6 @@ export const EVIDENCE_CONFIG = {
 } as const;
 
 // 版本信息
-export const VERSION = '1.8.0';
+export const VERSION = '1.7.0';
 export const APP_NAME = 'CareBuddy';
 export const APP_NAME_EN = 'CareBuddy';

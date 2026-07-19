@@ -169,29 +169,19 @@ export function FloatingPreview() {
     let cleanupIdle: (() => void) | null = null;
 
     listen<PreviewPayload>('floating-preview-update', (event) => {
-      console.log('[浮窗] 收到预览更新:', event.payload.taskId, '剩余:', event.payload.remaining, '当前阶段:', phaseRef.current);
-      // 更新预览数据（用于 triggered 消失后恢复显示）
       setPreview(event.payload);
-      // 防重入：已处于 triggered 阶段时，不切换到 preview（避免覆盖触发态胶囊）
       if (phaseRef.current === 'triggered' || dismissingRef.current) {
-        console.log('[浮窗] 预览更新被拦截，当前处于 triggered 阶段，不切换');
         return;
       }
-      console.log('[浮窗] 阶段切换:', phaseRef.current, '→ preview');
       phaseRef.current = 'preview';
       setPhase('preview');
     }).then((f) => { cleanupPreview = f; });
 
     listen<TriggeredPayload>('floating-task-triggered', (event) => {
-      // 空闲期间忽略 stale 触发事件（IPC 乱序导致空闲后到达的旧事件卡死触发态）
       if (useHealthStore.getState().isIdle) {
-        console.log('[浮窗] 空闲期间忽略触发事件:', event.payload.taskId);
         return;
       }
-      console.log('[浮窗] 收到触发事件:', event.payload.taskId, event.payload.title, '当前阶段:', phaseRef.current);
       if (phaseRef.current === 'triggered') {
-        // 已有触发态 → 入队等待，不覆盖
-        console.log('[浮窗] 已有触发态任务，入队等待:', event.payload.taskId);
         triggeredQueue.current.push(event.payload);
         return;
       }
@@ -199,7 +189,6 @@ export function FloatingPreview() {
       startFloatingResize(CAPSULE_TRIGGERED_WIDTH).catch(console.warn);
       setDismissing(false);
       dismissingRef.current = false;
-      console.log('[浮窗] 阶段切换:', phaseRef.current, '→ triggered');
       phaseRef.current = 'triggered';
       setPhase('triggered');
     }).then((f) => { cleanupTriggered = f; });
@@ -222,9 +211,7 @@ export function FloatingPreview() {
       }
     }).then((f) => { cleanupMode = f; });
 
-    // 主窗口"重置所有提醒"时，清除浮窗触发态
     listen('floating-reset-all', () => {
-      console.log('[浮窗] 收到重置所有提醒事件，清除触发态');
       triggeredQueue.current = [];
       if (autoTimeoutRef.current) {
         clearTimeout(autoTimeoutRef.current);
@@ -236,13 +223,9 @@ export function FloatingPreview() {
       setPhase('preview');
     }).then((f) => { cleanupResetAll = f; });
 
-    // 后端清除单个任务 triggered 态时通知浮窗（托盘单任务重置 / 锁屏退出全清 triggered）
     listen<{ taskId: string }>('floating-task-cleared', (event) => {
       const clearedId = event.payload.taskId;
-      console.log('[浮窗] 收到任务清除事件:', clearedId, '当前阶段:', phaseRef.current);
-      // 从队列中移除该任务
       triggeredQueue.current = triggeredQueue.current.filter((t) => t.taskId !== clearedId);
-      // 若当前正显示该任务的 triggered 态，清除并回 preview 态
       if (phaseRef.current === 'triggered' && triggeredTask?.taskId === clearedId) {
         if (autoTimeoutRef.current) {
           clearTimeout(autoTimeoutRef.current);
@@ -255,13 +238,8 @@ export function FloatingPreview() {
       }
     }).then((f) => { cleanupTaskCleared = f; });
 
-    // 「离开即重置」：用户进入闲置时清除浮窗触发态，避免胶囊在「触发 → 闲置 → 恢复」后
-    // 卡在触发态。后端在 idle 开始时已把任务的 triggered 清掉（见 lib.rs 空闲重置逻辑），
-    // 这里同步清掉浮窗自身的 React 状态（phase / 队列 / 超时），使窗口重新出现时回到预览态。
-    // 退出空闲时也强制归位到预览态，防止 IPC 乱序导致 stale floating-task-triggered 锁死 phase。
     listen<{ is_idle: boolean }>('idle-status-changed', (event) => {
       if (event.payload.is_idle) {
-        console.log('[浮窗] 进入闲置，清除触发态（离开即重置）');
         triggeredQueue.current = [];
         if (autoTimeoutRef.current) {
           clearTimeout(autoTimeoutRef.current);
@@ -272,8 +250,6 @@ export function FloatingPreview() {
         phaseRef.current = 'preview';
         setPhase('preview');
       } else {
-        // 退出空闲：归位到预览态，避免 phase 锁死
-        console.log('[浮窗] 退出闲置，归位到预览态');
         if (phaseRef.current === 'triggered') {
           setTriggeredTask(null);
           startFloatingResize(CAPSULE_PREVIEW_WIDTH).catch(console.warn);
