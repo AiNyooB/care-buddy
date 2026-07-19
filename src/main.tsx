@@ -1,14 +1,15 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
 import { I18nextProvider, useTranslation } from 'react-i18next';
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import App from './App';
-import { LockScreenSlave } from './components/LockScreenSlave';
-import { FloatingPreview } from './components/FloatingPreview';
-import { EntertainmentPreview } from './components/EntertainmentPreview';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles/global.css';
+
+const App = React.lazy(() => import('./App'));
+const LockScreenSlave = React.lazy(() => import('./components/LockScreenSlave').then(m => ({ default: m.LockScreenSlave })));
+const FloatingPreview = React.lazy(() => import('./components/FloatingPreview').then(m => ({ default: m.FloatingPreview })));
+const EntertainmentPreview = React.lazy(() => import('./components/EntertainmentPreview').then(m => ({ default: m.EntertainmentPreview })));
 
 // 中文语言包
 const zhCN = {
@@ -753,7 +754,9 @@ if (mode === 'lock_slave') {
 ReactDOM.createRoot(document.getElementById('app') as HTMLElement).render(
   <ErrorBoundary>
     <I18nextProvider i18n={i18n}>
-      {RootComponent}
+      <Suspense fallback={null}>
+        {RootComponent}
+      </Suspense>
     </I18nextProvider>
   </ErrorBoundary>
 );

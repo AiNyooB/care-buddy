@@ -1,15 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LayoutPanelTop, BicepsFlexed, BarChart3 } from 'lucide-react';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { WindowControls } from '@/components/WindowControls';
-import { Dashboard } from '@/components/Dashboard';
-import { Settings } from '@/components/Settings';
-import { ExerciseLibrary } from '@/components/ExerciseLibrary';
-import { ExercisePanel } from '@/components/ExercisePanel';
 import { Toaster } from '@/components/ui/sonner';
+
+const Dashboard = React.lazy(() => import('@/components/Dashboard').then(m => ({ default: m.Dashboard })));
+const Settings = React.lazy(() => import('@/components/Settings').then(m => ({ default: m.Settings })));
+const ExerciseLibrary = React.lazy(() => import('@/components/ExerciseLibrary').then(m => ({ default: m.ExerciseLibrary })));
+const ExercisePanel = React.lazy(() => import('@/components/ExercisePanel').then(m => ({ default: m.ExercisePanel })));
 
 import { useHealthStore } from '@/store';
 import { syncTasks } from '@/services';
