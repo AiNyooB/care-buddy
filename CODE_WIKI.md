@@ -148,7 +148,7 @@ flowchart TB
 
 ## 5. 前端核心模块
 
-### 5.1 入口与路由（[src/main.tsx](file:///d:/first_desktop/care-buddy/src/main.tsx)）
+### 5.1 入口与路由（[src/main.tsx](src/main.tsx)）
 
 - 同步初始化 i18next（`initReactI18next`），内联 `zhCN` / `enUS` 两套语言包，默认 `zh-CN`。
 - 解析 `?mode=` URL 参数路由到四个入口组件。
@@ -156,7 +156,7 @@ flowchart TB
 
 语言包顶层命名空间：`app` / `nav` / `tabs` / `dashboard` / `stats` / `tasks` / `taskNames` / `taskDesc` / `time` / `buttons` / `settings` / `exercise` / `guided` / `lock` / `window` / `timerCarousel` / `categories` / `statCards` / `floating` / `common`。其中 `settings` 命名空间包含完整娱乐模式文案。
 
-### 5.2 主应用组件（[src/App.tsx](file:///d:/first_desktop/care-buddy/src/App.tsx)）
+### 5.2 主应用组件（[src/App.tsx](src/App.tsx)）
 
 `App.tsx` 职责：
 
@@ -170,25 +170,25 @@ flowchart TB
 
 | # | Hook | 文件 | 职责 | EventCoordinator |
 |---|------|------|------|------------------|
-| 1 | `useAppInit` | [useAppInit.ts](file:///d:/first_desktop/care-buddy/src/hooks/useAppInit.ts) | 检查日期切换、同步任务、恢复暂停状态、静默启动时隐藏窗口 | — |
-| 2 | `useCountdownSync` | [useCountdownSync.ts](file:///d:/first_desktop/care-buddy/src/hooks/useCountdownSync.ts) | 监听 `countdown-update`/`task-reset-confirmed`，写入 store；预通知浮窗、系统通知、提示音；**`entertainmentActive` 时直接 return 跳过常规分发** | ✅ `clearAll` / `floatingVisible` / `notifiedPre` / `handledTriggers` / `triggerStreak` |
-| 3 | `useTriggerHealing` | [useTriggerHealing.ts](file:///d:/first_desktop/care-buddy/src/hooks/useTriggerHealing.ts) | 触发态自愈：连续 ≥2 帧观测到 triggered 才请求后端重发；导出 `runTriggerHealingPass(countdowns)` 供 useCountdownSync 单线程调用 | ✅ `handledTriggers` / `triggerStreak` |
-| 4 | `useFloatingManager` | [useFloatingManager.ts](file:///d:/first_desktop/care-buddy/src/hooks/useFloatingManager.ts) | 监听 `floating-task-dismissed`；锁屏退出后归位浮窗；done 时调用 `recordTaskCompletion` | ✅ `floatingVisible` / `notifiedPre` |
-| 5 | `useEntertainmentManager` | [useEntertainmentManager.ts](file:///d:/first_desktop/care-buddy/src/hooks/useEntertainmentManager.ts) | 监听 `entertainment-task-dismissed`（统计记录已移至 EntertainmentPreview 内） | — |
-| 6 | `useModeTransition` | [useModeTransition.ts](file:///d:/first_desktop/care-buddy/src/hooks/useModeTransition.ts) | 监听 `app-mode-changed`，立即调整浮窗可见性（不等下次 countdown-update） | ✅ `floatingVisible` |
-| 7 | `useAppModeSync` | [useAppModeSync.ts](file:///d:/first_desktop/care-buddy/src/hooks/useAppModeSync.ts) | 启动期把前端真实 appMode 推回后端（单一可信源，消除 Rust 默认 `notification` 导致的自动 +1）；保留监听 `app-mode-changed` / `entertainment-mode-changed` / `settings-updated` 同步前端 | — |
-| 8 | `useWorkMinutesTracker` | [useWorkMinutesTracker.ts](file:///d:/first_desktop/care-buddy/src/hooks/useWorkMinutesTracker.ts) | 每分钟累加工作时长（条件：非暂停/非空闲/非锁屏） | — |
-| 9 | `useDailyStatsAutoSave` | [useDailyStatsAutoSave.ts](file:///d:/first_desktop/care-buddy/src/hooks/useDailyStatsAutoSave.ts) | 每 5 分钟自动保存每日统计，unmount 时兜底再保存一次 | — |
-| 10 | `useLockScreenEvents` | [useLockScreenEvents.ts](file:///d:/first_desktop/care-buddy/src/hooks/useLockScreenEvents.ts) | 监听 `task-notification` / `lock-screen-open` / `lock-screen-completed`；`task-notification` 仅在 `appMode==='notification'` 时自动 +1（双保险守卫，前后端不同步时不会污染计数）；锁屏计数由本 hook 在 closeLockScreen 前快照处理；合并锁屏时 `aggregateExerciseIds(primary, merged)` 聚合 primary + 各 merged 中 exerciseIds 非空者（primary 优先 + 首次去重），时长取去重后 `computeExerciseDuration`，全部为空 fallback `task.lockDuration`；参与判定 = `lockScreenExerciseEnabled && exerciseIds 非空`（已移除 isExerciseTask 字段） | — |
-| 11 | `useIdleDetection` | [useIdleDetection.ts](file:///d:/first_desktop/care-buddy/src/hooks/useIdleDetection.ts) | 监听 `idle-status-changed` 更新 store `isIdle`；空闲时隐藏浮窗 | — |
-| 12 | `useSystemLockEvents` | [useSystemLockEvents.ts](file:///d:/first_desktop/care-buddy/src/hooks/useSystemLockEvents.ts) | 监听系统锁屏/解锁事件，调用 `timerSetSystemLocked` | — |
-| 13 | `useTrayMenuEvents` | [useTrayMenuEvents.ts](file:///d:/first_desktop/care-buddy/src/hooks/useTrayMenuEvents.ts) | 处理托盘 `reset-all-tasks` / `toggle-pause`；reset 成功后 emit `floating-reset-all` | — |
-| 14 | `usePauseStateSync` | [usePauseStateSync.ts](file:///d:/first_desktop/care-buddy/src/hooks/usePauseStateSync.ts) | 监听跨窗口 `pause-state-updated` | — |
-| 15 | `useSettingsSync` | [useSettingsSync.ts](file:///d:/first_desktop/care-buddy/src/hooks/useSettingsSync.ts) | 监听 `settings-updated` 合并到 store | — |
-| 16 | `useNotificationPermission` | [useNotificationPermission.ts](file:///d:/first_desktop/care-buddy/src/hooks/useNotificationPermission.ts) | 应用启动时请求系统通知权限 | — |
-| 17 | `useGuidedExercise` | [useGuidedExercise.ts](file:///d:/first_desktop/care-buddy/src/hooks/useGuidedExercise.ts) | 引导锻炼状态机 Hook（独立，由 LockScreenSlave 调用） | — |
+| 1 | `useAppInit` | [useAppInit.ts](src/hooks/useAppInit.ts) | 检查日期切换、同步任务、恢复暂停状态、静默启动时隐藏窗口 | — |
+| 2 | `useCountdownSync` | [useCountdownSync.ts](src/hooks/useCountdownSync.ts) | 监听 `countdown-update`/`task-reset-confirmed`，写入 store；预通知浮窗、系统通知、提示音；**`entertainmentActive` 时直接 return 跳过常规分发** | ✅ `clearAll` / `floatingVisible` / `notifiedPre` / `handledTriggers` / `triggerStreak` |
+| 3 | `useTriggerHealing` | [useTriggerHealing.ts](src/hooks/useTriggerHealing.ts) | 触发态自愈：连续 ≥2 帧观测到 triggered 才请求后端重发；导出 `runTriggerHealingPass(countdowns)` 供 useCountdownSync 单线程调用 | ✅ `handledTriggers` / `triggerStreak` |
+| 4 | `useFloatingManager` | [useFloatingManager.ts](src/hooks/useFloatingManager.ts) | 监听 `floating-task-dismissed`；锁屏退出后归位浮窗；done 时调用 `recordTaskCompletion` | ✅ `floatingVisible` / `notifiedPre` |
+| 5 | `useEntertainmentManager` | [useEntertainmentManager.ts](src/hooks/useEntertainmentManager.ts) | 监听 `entertainment-task-dismissed`（统计记录已移至 EntertainmentPreview 内） | — |
+| 6 | `useModeTransition` | [useModeTransition.ts](src/hooks/useModeTransition.ts) | 监听 `app-mode-changed`，立即调整浮窗可见性（不等下次 countdown-update） | ✅ `floatingVisible` |
+| 7 | `useAppModeSync` | [useAppModeSync.ts](src/hooks/useAppModeSync.ts) | 启动期把前端真实 appMode 推回后端（单一可信源，消除 Rust 默认 `notification` 导致的自动 +1）；保留监听 `app-mode-changed` / `entertainment-mode-changed` / `settings-updated` 同步前端 | — |
+| 8 | `useWorkMinutesTracker` | [useWorkMinutesTracker.ts](src/hooks/useWorkMinutesTracker.ts) | 每分钟累加工作时长（条件：非暂停/非空闲/非锁屏） | — |
+| 9 | `useDailyStatsAutoSave` | [useDailyStatsAutoSave.ts](src/hooks/useDailyStatsAutoSave.ts) | 每 5 分钟自动保存每日统计，unmount 时兜底再保存一次 | — |
+| 10 | `useLockScreenEvents` | [useLockScreenEvents.ts](src/hooks/useLockScreenEvents.ts) | 监听 `task-notification` / `lock-screen-open` / `lock-screen-completed`；`task-notification` 仅在 `appMode==='notification'` 时自动 +1（双保险守卫，前后端不同步时不会污染计数）；锁屏计数由本 hook 在 closeLockScreen 前快照处理；合并锁屏时 `aggregateExerciseIds(primary, merged)` 聚合 primary + 各 merged 中 exerciseIds 非空者（primary 优先 + 首次去重），时长取去重后 `computeExerciseDuration`，全部为空 fallback `task.lockDuration`；参与判定 = `lockScreenExerciseEnabled && exerciseIds 非空`（已移除 isExerciseTask 字段） | — |
+| 11 | `useIdleDetection` | [useIdleDetection.ts](src/hooks/useIdleDetection.ts) | 监听 `idle-status-changed` 更新 store `isIdle`；空闲时隐藏浮窗 | — |
+| 12 | `useSystemLockEvents` | [useSystemLockEvents.ts](src/hooks/useSystemLockEvents.ts) | 监听系统锁屏/解锁事件，调用 `timerSetSystemLocked` | — |
+| 13 | `useTrayMenuEvents` | [useTrayMenuEvents.ts](src/hooks/useTrayMenuEvents.ts) | 处理托盘 `reset-all-tasks` / `toggle-pause`；reset 成功后 emit `floating-reset-all` | — |
+| 14 | `usePauseStateSync` | [usePauseStateSync.ts](src/hooks/usePauseStateSync.ts) | 监听跨窗口 `pause-state-updated` | — |
+| 15 | `useSettingsSync` | [useSettingsSync.ts](src/hooks/useSettingsSync.ts) | 监听 `settings-updated` 合并到 store | — |
+| 16 | `useNotificationPermission` | [useNotificationPermission.ts](src/hooks/useNotificationPermission.ts) | 应用启动时请求系统通知权限 | — |
+| 17 | `useGuidedExercise` | [useGuidedExercise.ts](src/hooks/useGuidedExercise.ts) | 引导锻炼状态机 Hook（独立，由 LockScreenSlave 调用） | — |
 
-### 5.4 引导锻炼状态机（[src/hooks/useGuidedExercise.ts](file:///d:/first_desktop/care-buddy/src/hooks/useGuidedExercise.ts)）
+### 5.4 引导锻炼状态机（[src/hooks/useGuidedExercise.ts](src/hooks/useGuidedExercise.ts)）
 
 状态流转：
 
@@ -217,7 +217,7 @@ actions.exit();                            // 清理 + 回到 INITIAL_STATE
 actions.setMuted(muted);                   // 静音切换
 ```
 
-### 5.5 状态管理（[src/store/healthStore.ts](file:///d:/first_desktop/care-buddy/src/store/healthStore.ts)）
+### 5.5 状态管理（[src/store/healthStore.ts](src/store/healthStore.ts)）
 
 使用 Zustand 单一 Store，所有 state 与 actions 集中在 `useHealthStore`。所有 state 改动通过 `setStorage` 同步持久化到 `localStorage`（`care_buddy_` 前缀）。任务操作走乐观更新 + IPC 调用，失败回滚。
 
@@ -268,7 +268,7 @@ actions.setMuted(muted);                   // 静音切换
 
 ## 6. 多窗口入口组件
 
-### 6.1 LockScreenSlave（[src/components/LockScreenSlave.tsx](file:///d:/first_desktop/care-buddy/src/components/LockScreenSlave.tsx)）
+### 6.1 LockScreenSlave（[src/components/LockScreenSlave.tsx](src/components/LockScreenSlave.tsx)）
 
 URL：`?mode=lock_slave&is_primary=true&title=...&duration=...&strict_mode=...&auto_unlock=...&is_exercise_mode=...&exercise_ids=...`
 
@@ -286,7 +286,7 @@ URL：`?mode=lock_slave&is_primary=true&title=...&duration=...&strict_mode=...&a
 - `autoUnlock=true` 时自动调用 `handleComplete(false)`
 - 倒计时最后 3 秒播放 `playCountSound`
 
-### 6.2 FloatingPreview（[src/components/FloatingPreview.tsx](file:///d:/first_desktop/care-buddy/src/components/FloatingPreview.tsx)）
+### 6.2 FloatingPreview（[src/components/FloatingPreview.tsx](src/components/FloatingPreview.tsx)）
 
 URL：`?mode=floating`，胶囊窗口 156 (preview) / 278 (triggered) × 48
 
@@ -305,7 +305,7 @@ URL：`?mode=floating`，胶囊窗口 156 (preview) / 278 (triggered) × 48
 - IPC：`get_floating_state` / `timerReopenTriggered`（挂载自愈）/ `timerSnoozeTask` / `startFloatingDrag` / `startFloatingResize` / `saveFloatingPosition` / `getFloatingPosition`
 - 统计记录不在 FloatingPreview 内处理，由主窗口 `useFloatingManager` 响应 dismissed 事件统一调用 `recordTaskCompletion`
 
-### 6.3 EntertainmentPreview（[src/components/EntertainmentPreview.tsx](file:///d:/first_desktop/care-buddy/src/components/EntertainmentPreview.tsx)）
+### 6.3 EntertainmentPreview（[src/components/EntertainmentPreview.tsx](src/components/EntertainmentPreview.tsx)）
 
 URL：`?mode=entertainment`，胶囊窗口 120 (idle) / 278 (triggered) × 48
 
@@ -347,23 +347,23 @@ URL：`?mode=entertainment`，胶囊窗口 120 (idle) / 278 (triggered) × 48
 
 | 组件 | 文件 | 职责 |
 |------|------|------|
-| `Dashboard` | [Dashboard.tsx](file:///d:/first_desktop/care-buddy/src/components/Dashboard.tsx) | 首页主面板容器：纵向 flex 组合 `HealthMetricsSection` + `CountdownSection` |
-| `HealthMetricsSection` | [HealthMetricsSection.tsx](file:///d:/first_desktop/care-buddy/src/components/HealthMetricsSection.tsx) | 健康指标卡：recharts `RadialBarChart` 半圆环显示 4 项目标完成率 + `MiniWeekdayHeatmap` + `MiniBarChart`（5 类运动分布） + 昨日对比 |
-| `CountdownSection` | [CountdownSection.tsx](file:///d:/first_desktop/care-buddy/src/components/CountdownSection.tsx) | 倒计时区：`AnimatedCircularProgressBar` + `number-flow` 数字滚动 + 暂停/恢复/重置/贪睡 + `Pagination`（4 任务 ×3/页） |
-| `TodayStatsSection` | [TodayStatsSection.tsx](file:///d:/first_desktop/care-buddy/src/components/TodayStatsSection.tsx) | 今日统计 + 7 天柱状图，支持 `chartMode` 切换（任务/分类/套餐），`computeStreak` 连续天数 |
-| `ExerciseLibrary` | [ExerciseLibrary.tsx](file:///d:/first_desktop/care-buddy/src/components/ExerciseLibrary.tsx) | 运动库浏览页：分类 Tabs + 详情 Dialog + "完成"/"引导模式"入口 |
-| `ExercisePanel` | [ExercisePanel.tsx](file:///d:/first_desktop/care-buddy/src/components/ExercisePanel.tsx) | 引导锻炼执行面板：单动作 overlay + 套餐序列执行，基于 `useGuidedExercise` |
-| `GuidedExerciseContent` | [guided/GuidedExerciseContent.tsx](file:///d:/first_desktop/care-buddy/src/components/guided/GuidedExerciseContent.tsx) | 引导锻炼共享内容（Header/ProgressBar/CenterContent/Footer），被 ExercisePanel 与 LockScreenSlave 复用 |
-| `StatsDashboard` | [StatsDashboard.tsx](file:///d:/first_desktop/care-buddy/src/components/StatsDashboard.tsx) | 统计页主容器：`StatsOverview` + `CalendarHeatmap` + `CompletionTrend` + `DayDetailDialog` + `GoalEditDialog`，`ToggleGroup` 切换周/月 |
-| `Settings` | [Settings.tsx](file:///d:/first_desktop/care-buddy/src/components/Settings.tsx) | 系统设置面板：任务编辑（MAX_TASKS=12）、主题/语言、娱乐模式配置、浮窗/锁屏开关 |
-| `QuickActions` | [QuickActions.tsx](file:///d:/first_desktop/care-buddy/src/components/QuickActions.tsx) | 快捷操作栏（暂停/恢复 + 重置全部） |
-| `WindowControls` | [WindowControls.tsx](file:///d:/first_desktop/care-buddy/src/components/WindowControls.tsx) | 标题栏窗口控件（设置/最小化/关闭=隐藏） |
-| `CircularProgress` | [CircularProgress.tsx](file:///d:/first_desktop/care-buddy/src/components/CircularProgress.tsx) | 基于 `react-circular-progressbar` 的通用圆环 |
-| `Icons` | [Icons.tsx](file:///d:/first_desktop/care-buddy/src/components/Icons.tsx) | 图标映射层：导出 `TaskIcon` 组件，icon 字符串 → Lucide 图标 |
-| `ErrorBoundary` | [ErrorBoundary.tsx](file:///d:/first_desktop/care-buddy/src/components/ErrorBoundary.tsx) | React 错误边界，渲染兜底 UI + 重新加载按钮 |
-| `SuffixedNumberField` | [SuffixedNumberField.tsx](file:///d:/first_desktop/care-buddy/src/components/SuffixedNumberField.tsx) | 带后缀的数字输入字段，本地 draft + onBlur clamp + onCommit |
+| `Dashboard` | [Dashboard.tsx](src/components/Dashboard.tsx) | 首页主面板容器：纵向 flex 组合 `HealthMetricsSection` + `CountdownSection` |
+| `HealthMetricsSection` | [HealthMetricsSection.tsx](src/components/HealthMetricsSection.tsx) | 健康指标卡：recharts `RadialBarChart` 半圆环显示 4 项目标完成率 + `MiniWeekdayHeatmap` + `MiniBarChart`（5 类运动分布） + 昨日对比 |
+| `CountdownSection` | [CountdownSection.tsx](src/components/CountdownSection.tsx) | 倒计时区：`AnimatedCircularProgressBar` + `number-flow` 数字滚动 + 暂停/恢复/重置/贪睡 + `Pagination`（4 任务 ×3/页） |
+| `TodayStatsSection` | [TodayStatsSection.tsx](src/components/TodayStatsSection.tsx) | 今日统计 + 7 天柱状图，支持 `chartMode` 切换（任务/分类/套餐），`computeStreak` 连续天数 |
+| `ExerciseLibrary` | [ExerciseLibrary.tsx](src/components/ExerciseLibrary.tsx) | 运动库浏览页：分类 Tabs + 详情 Dialog + "完成"/"引导模式"入口 |
+| `ExercisePanel` | [ExercisePanel.tsx](src/components/ExercisePanel.tsx) | 引导锻炼执行面板：单动作 overlay + 套餐序列执行，基于 `useGuidedExercise` |
+| `GuidedExerciseContent` | [guided/GuidedExerciseContent.tsx](src/components/guided/GuidedExerciseContent.tsx) | 引导锻炼共享内容（Header/ProgressBar/CenterContent/Footer），被 ExercisePanel 与 LockScreenSlave 复用 |
+| `StatsDashboard` | [StatsDashboard.tsx](src/components/StatsDashboard.tsx) | 统计页主容器：`StatsOverview` + `CalendarHeatmap` + `CompletionTrend` + `DayDetailDialog` + `GoalEditDialog`，`ToggleGroup` 切换周/月 |
+| `Settings` | [Settings.tsx](src/components/Settings.tsx) | 系统设置面板：任务编辑（MAX_TASKS=12）、主题/语言、娱乐模式配置、浮窗/锁屏开关 |
+| `QuickActions` | [QuickActions.tsx](src/components/QuickActions.tsx) | 快捷操作栏（暂停/恢复 + 重置全部） |
+| `WindowControls` | [WindowControls.tsx](src/components/WindowControls.tsx) | 标题栏窗口控件（设置/最小化/关闭=隐藏） |
+| `CircularProgress` | [CircularProgress.tsx](src/components/CircularProgress.tsx) | 基于 `react-circular-progressbar` 的通用圆环 |
+| `Icons` | [Icons.tsx](src/components/Icons.tsx) | 图标映射层：导出 `TaskIcon` 组件，icon 字符串 → Lucide 图标 |
+| `ErrorBoundary` | [ErrorBoundary.tsx](src/components/ErrorBoundary.tsx) | React 错误边界，渲染兜底 UI + 重新加载按钮 |
+| `SuffixedNumberField` | [SuffixedNumberField.tsx](src/components/SuffixedNumberField.tsx) | 带后缀的数字输入字段，本地 draft + onBlur clamp + onCommit |
 
-### 7.2 统计子组件（[src/components/stats/](file:///d:/first_desktop/care-buddy/src/components/stats/)）
+### 7.2 统计子组件（[src/components/stats/](src/components/stats/)）
 
 | 组件 | 职责 |
 |------|------|
@@ -373,13 +373,13 @@ URL：`?mode=entertainment`，胶囊窗口 120 (idle) / 278 (triggered) × 48
 | `DayDetailDialog` | 单日详情：4 项目标 + 运动记录列表（从 `EXERCISE_HISTORY` storage 读取） |
 | `GoalEditDialog` | 每日目标编辑：`Slider` 调整 4 项目标 + `onReset` 重置到 DEFAULT_DAILY_GOALS |
 
-### 7.3 热力图子组件（[src/components/heatmap/](file:///d:/first_desktop/care-buddy/src/components/heatmap/)）
+### 7.3 热力图子组件（[src/components/heatmap/](src/components/heatmap/)）
 
 | 组件 | 职责 |
 |------|------|
 | `MiniWeekdayHeatmap` | 7 天 × 上午/下午迷你热力图，4 级颜色深浅 |
 
-### 7.4 shadcn UI 组件清单（[src/components/ui/](file:///d:/first_desktop/care-buddy/src/components/ui/)）
+### 7.4 shadcn UI 组件清单（[src/components/ui/](src/components/ui/)）
 
 已集成 32+ 个 shadcn v4 组件：animated-circular-progress-bar、badge、border-beam、button、button-group、card、carousel、chart、checkbox、chip、collapsible、dialog、dropdown-menu、field、input、input-group、item、label、pagination、progress、radio-group、scroll-area、select、separator、slider、sonner、switch、tabs、textarea、toggle、toggle-group、tooltip。
 
@@ -387,7 +387,7 @@ URL：`?mode=entertainment`，胶囊窗口 120 (idle) / 278 (triggered) × 48
 
 ## 8. 数据层
 
-### 8.1 运动库（[src/data/exercises.ts](file:///d:/first_desktop/care-buddy/src/data/exercises.ts)）
+### 8.1 运动库（[src/data/exercises.ts](src/data/exercises.ts)）
 
 **36 个医学级运动**，覆盖 5 大分类（v2.0 全量校准版，五段式动作说明）：
 
@@ -403,7 +403,7 @@ URL：`?mode=entertainment`，胶囊窗口 120 (idle) / 278 (triggered) × 48
 
 优先级颜色：`core`=#3b6ee6 / `strong`=#6366f1 / `recommend`=#0d9488 / `supplement`=#737373。
 
-### 8.2 运动套餐（同 [exercises.ts](file:///d:/first_desktop/care-buddy/src/data/exercises.ts)）
+### 8.2 运动套餐（同 [exercises.ts](src/data/exercises.ts)）
 
 | 套餐 ID | 名称 | 时长 | 动作数 | 推荐频率 |
 |---------|------|------|--------|---------|
@@ -411,7 +411,7 @@ URL：`?mode=entertainment`，胶囊窗口 120 (idle) / 278 (triggered) × 48
 | `package-standard` | 起身唤醒包 | 6 min | 8 | 每天 2-3 次 |
 | `package-deep` | 深度修复包 | 13 min | 15 | 每天 1 次 |
 
-### 8.3 引导配置（[src/data/guided-configs.ts](file:///d:/first_desktop/care-buddy/src/data/guided-configs.ts)）
+### 8.3 引导配置（[src/data/guided-configs.ts](src/data/guided-configs.ts)）
 
 `guidedExerciseConfigs: Record<string, GuidedExerciseConfig>` — key 为 exercise.id。
 
@@ -426,7 +426,7 @@ URL：`?mode=entertainment`，胶囊窗口 120 (idle) / 278 (triggered) × 48
 
 特殊配置：`E-01`（20-20-20 法则）和 `C-07`（仰卧腿部抬高）配置为空对象 `{}`，不进入引导模式。
 
-### 8.4 常量配置（[src/constants/index.ts](file:///d:/first_desktop/care-buddy/src/constants/index.ts)）
+### 8.4 常量配置（[src/constants/index.ts](src/constants/index.ts)）
 
 #### DEFAULT_TASKS（4 个默认任务）
 
@@ -468,7 +468,7 @@ sitBreaks: 5, eyeCare: 4, waterCups: 4, exercises: 2
 | C | 🟡 黄色 | 专家共识 |
 | D | ⚪ 灰色 | 辅助/传统实践 |
 
-### 8.5 统计常量（[src/constants/stats.ts](file:///d:/first_desktop/care-buddy/src/constants/stats.ts)）
+### 8.5 统计常量（[src/constants/stats.ts](src/constants/stats.ts)）
 
 `GOAL_ROW_CONFIG` — 4 行统一配置（`sitBreaks → --chart-1` / `eyeCare → --chart-3` / `waterCups → --chart-4` / `exercises → --chart-2`），供多个统计组件复用。
 
@@ -476,7 +476,7 @@ sitBreaks: 5, eyeCare: 4, waterCups: 4, exercises: 2
 
 ## 9. 服务与工具
 
-### 9.1 Tauri IPC 封装（[src/services/tauri.ts](file:///d:/first_desktop/care-buddy/src/services/tauri.ts)）
+### 9.1 Tauri IPC 封装（[src/services/tauri.ts](src/services/tauri.ts)）
 
 前端与 Rust 后端通信的唯一入口。`isTauri()` 检测 `window.__TAURI_INTERNALS__`，无 IPC 时所有调用安全降级（浏览器开发模式）。
 
@@ -529,7 +529,7 @@ sitBreaks: 5, eyeCare: 4, waterCups: 4, exercises: 2
 | `AppModePayload` | mode, opacity, snoozeMinutes, displayStrategy |
 | `LockTaskArgs` | title, desc, duration, icon, strictMode, allowStrictSnooze, maxSnoozeCount, snoozeMinutes, currentSnoozeCount, bgImage?, autoUnlock?, isExerciseMode?, exercisePackageId?, exerciseIds? |
 
-### 9.2 EventCoordinator 单例（[src/services/eventCoordinator.ts](file:///d:/first_desktop/care-buddy/src/services/eventCoordinator.ts)）
+### 9.2 EventCoordinator 单例（[src/services/eventCoordinator.ts](src/services/eventCoordinator.ts)）
 
 模块级 singleton（class 实例），**不参与 React 渲染生命周期**，各 hook 直接 import 使用。HMR 下保留旧状态，故 `useCountdownSync` mount 时调用 `clearAll()` 防泄漏。
 
@@ -543,7 +543,7 @@ sitBreaks: 5, eyeCare: 4, waterCups: 4, exercises: 2
 
 方法：`clearTriggerState()` / `clearAll()`。
 
-### 9.3 语音服务（[src/services/voice.ts](file:///d:/first_desktop/care-buddy/src/services/voice.ts)）
+### 9.3 语音服务（[src/services/voice.ts](src/services/voice.ts)）
 
 基于 Web Speech API `speechSynthesis`。**未通过 `services/index.ts` 导出**，需直接 `import { speak, ... } from '@/services/voice'`。
 
@@ -559,14 +559,14 @@ sitBreaks: 5, eyeCare: 4, waterCups: 4, exercises: 2
 
 | 文件 | 主要函数 |
 |------|---------|
-| [utils/time.ts](file:///d:/first_desktop/care-buddy/src/utils/time.ts) | `formatDuration` / `parseTime` / `isNearTime` / `getTodayDate` / `getRelativeDate` / `minutesToSeconds` / `getYesterdayStats` / `computeStreak` / `computeGoalStreak` |
-| [utils/audio.ts](file:///d:/first_desktop/care-buddy/src/utils/audio.ts) | `playTone` / `playCountSound` / `playCompleteSound` / `playStartSound` / `playWarningSound` / `playBeatSound` / `playTransitionSound` / `playRoundSound` / `playCancelSound` / `muteAudio` / `unmuteAudio`（基于 Web Audio API，模块级单例 audioContext） |
-| [utils/storage.ts](file:///d:/first_desktop/care-buddy/src/utils/storage.ts) | `getStorage<T>` / `setStorage<T>` / `removeStorage` / `clearStorage`，统一 `care_buddy_` 前缀；`STORAGE_KEYS` 常量（13 个键） |
-| [utils/exercise.ts](file:///d:/first_desktop/care-buddy/src/utils/exercise.ts) | `computeExerciseDuration(exerciseIds?)` 累加总时长（秒）；`formatExerciseDuration(seconds)` 格式化；`aggregateExerciseIds(primary, merged)` 合并锁屏去重聚合（primary 优先 + 首次出现去重，全空返回 []） |
-| [utils/statsRecorder.ts](file:///d:/first_desktop/care-buddy/src/utils/statsRecorder.ts) | `recordTaskCompletion(taskId)` — 任务完成统计单一入口，500ms 幂等守卫 |
-| [utils/recommend.ts](file:///d:/first_desktop/care-buddy/src/utils/recommend.ts) | `getRecommendedPackageId(now)` — 按时段推荐套餐（上午 quick / 下午 standard / 其他 deep） |
-| [utils/index.ts](file:///d:/first_desktop/care-buddy/src/utils/index.ts) | barrel 导出 `time/audio/storage/statsRecorder`（**未导出 exercise / recommend**） |
-| [lib/utils.ts](file:///d:/first_desktop/care-buddy/src/lib/utils.ts) | `cn(...inputs)` = `customTwMerge(clsx(inputs))`；用 `extendTailwindMerge` 把自定义 `--text-*` tokens 注册到 `font-size` classGroup（避免 tailwind-merge v3 误归为 `text-color` 组） |
+| [utils/time.ts](src/utils/time.ts) | `formatDuration` / `parseTime` / `isNearTime` / `getTodayDate` / `getRelativeDate` / `minutesToSeconds` / `getYesterdayStats` / `computeStreak` / `computeGoalStreak` |
+| [utils/audio.ts](src/utils/audio.ts) | `playTone` / `playCountSound` / `playCompleteSound` / `playStartSound` / `playWarningSound` / `playBeatSound` / `playTransitionSound` / `playRoundSound` / `playCancelSound` / `muteAudio` / `unmuteAudio`（基于 Web Audio API，模块级单例 audioContext） |
+| [utils/storage.ts](src/utils/storage.ts) | `getStorage<T>` / `setStorage<T>` / `removeStorage` / `clearStorage`，统一 `care_buddy_` 前缀；`STORAGE_KEYS` 常量（13 个键） |
+| [utils/exercise.ts](src/utils/exercise.ts) | `computeExerciseDuration(exerciseIds?)` 累加总时长（秒）；`formatExerciseDuration(seconds)` 格式化；`aggregateExerciseIds(primary, merged)` 合并锁屏去重聚合（primary 优先 + 首次出现去重，全空返回 []） |
+| [utils/statsRecorder.ts](src/utils/statsRecorder.ts) | `recordTaskCompletion(taskId)` — 任务完成统计单一入口，500ms 幂等守卫 |
+| [utils/recommend.ts](src/utils/recommend.ts) | `getRecommendedPackageId(now)` — 按时段推荐套餐（上午 quick / 下午 standard / 其他 deep） |
+| [utils/index.ts](src/utils/index.ts) | barrel 导出 `time/audio/storage/statsRecorder`（**未导出 exercise / recommend**） |
+| [lib/utils.ts](src/lib/utils.ts) | `cn(...inputs)` = `customTwMerge(clsx(inputs))`；用 `extendTailwindMerge` 把自定义 `--text-*` tokens 注册到 `font-size` classGroup（避免 tailwind-merge v3 误归为 `text-color` 组） |
 
 #### STORAGE_KEYS 常量
 
@@ -576,7 +576,7 @@ sitBreaks: 5, eyeCare: 4, waterCups: 4, exercises: 2
 
 ## 10. Rust 后端核心模块
 
-### 10.1 入口（[src-tauri/src/main.rs](file:///d:/first_desktop/care-buddy/src/main.rs)）
+### 10.1 入口（[src-tauri/src/main.rs](src/main.rs)）
 
 ```rust
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -585,7 +585,7 @@ fn main() {
 }
 ```
 
-### 10.2 主运行函数 `run()`（[src-tauri/src/lib.rs](file:///d:/first_desktop/care-buddy/src/lib.rs)）
+### 10.2 主运行函数 `run()`（[src-tauri/src/lib.rs](src/lib.rs)）
 
 1. `migrate_old_settings()`：从 `health-reminder` / `desk-reminder` 迁移旧版设置。
 2. 注册 Tauri 插件：shell、notification、updater、process、dialog、autostart（带 `--silent` 启动参数）。
@@ -715,7 +715,7 @@ enum FreezeReason {
 
 ## 11. 核心类型定义
 
-### 11.1 任务相关（[src/types/index.ts](file:///d:/first_desktop/care-buddy/src/types/index.ts)）
+### 11.1 任务相关（[src/types/index.ts](src/types/index.ts)）
 
 ```ts
 export type TaskIcon = 'sit' | 'water' | 'eye' | 'work' | 'exercise';
@@ -891,7 +891,7 @@ export interface Exercise {
 | `tw-animate-css` (1.4.0) | CSS 动画 |
 | `@fontsource-variable/geist` | 字体 |
 
-### 12.2 Rust 关键依赖（[Cargo.toml](file:///d:/first_desktop/care-buddy/src-tauri/Cargo.toml)）
+### 12.2 Rust 关键依赖（[Cargo.toml](src-tauri/Cargo.toml)）
 
 | 依赖 | 版本 | 用途 |
 |------|------|------|
@@ -970,7 +970,7 @@ npm run tauri build
 npm run clean
 ```
 
-### 13.3 CI 流程（[.github/workflows/ci.yml](file:///d:/first_desktop/care-buddy/.github/workflows/ci.yml)）
+### 13.3 CI 流程（[.github/workflows/ci.yml](.github/workflows/ci.yml)）
 
 - 触发：`push` 到 `main` 分支 + 所有 `pull_request`
 - 运行环境：`runs-on: windows-latest`
@@ -995,12 +995,12 @@ npm run clean
 5. **统计幂等**：`recordTaskCompletion` 必须用统一函数 + 状态守卫，**不**使用 `countdown > 0` 守卫，仅依赖 500ms idempotency 窗口（`eventCoordinator.lastRecordedTaskId/lastRecordedTime`）。
 6. **任务重置确认**：`task-reset-confirmed` 事件必须包含完整状态字段（triggered / paused / snoozed）。`taskStates` countdown 值只能由 `updateCountdowns`（周期同步）和 `updateTaskCountdown`（重置确认）写入。
 7. **乐观更新**：toggle/pause/resume 任务动作必须包含乐观 UI 更新，失败回滚。`resetAllTasks` 必须返回 boolean 成功状态以控制 UI 状态更新。
-8. **存储前缀**：前端 localStorage 统一使用 `care_buddy_` 前缀（[storage.ts](file:///d:/first_desktop/care-buddy/src/utils/storage.ts)）。
+8. **存储前缀**：前端 localStorage 统一使用 `care_buddy_` 前缀（[storage.ts](src/utils/storage.ts)）。
 9. **后端设置持久化**：`save_settings` / `load_settings` 将设置保存到 `~/.config/care-buddy/settings.json`。
-10. **路径别名**：`@/` 指向 `src/`，在 [vite.config.ts](file:///d:/first_desktop/care-buddy/vite.config.ts) 与 [tsconfig.json](file:///d:/first_desktop/care-buddy/tsconfig.json) 中统一配置。
+10. **路径别名**：`@/` 指向 `src/`，在 [vite.config.ts](vite.config.ts) 与 [tsconfig.json](tsconfig.json) 中统一配置。
 11. **卡片边框**：父容器有 `overflow-y-auto` 时，Card 需用 `border border-border ring-0` 替代默认 `ring-1 ring-foreground/10` 避免 ring 被裁切。
 12. **圆角 + overflow 分离**：父层不能 `overflow-hidden rounded-X` 一把抓，否则子元素 shadow / border 一起被裁。背景单独包一层 `overflow-hidden rounded-X` 自裁，承载子元素走外层直接子节点。
-13. **tailwind-merge × 自定义 `--text-*` 陷阱**：tailwind-merge v3 不识别自定义 `--text-*` tokens（如 `text-type-section-title`），误归 `text-color` 组。修复在 [src/lib/utils.ts](file:///d:/first_desktop/care-buddy/src/lib/utils.ts) 中用 `extendTailwindMerge` 注册到 `font-size` 组。新加 `--text-*` 需同步更新。字号/字重/行高全部由 `@theme` 的 `--text-*` token 提供（含 `--text-*-font-weight`、`--text-*-line-height` 修饰符，Tailwind v4 原生支持），行高走 `--tw-leading` 机制故 `leading-*` 可正常覆盖；不要再用 `@layer utilities` 手写 `.text-type-*` 工具类强制 `font-size/line-height/font-weight`（会静默盖掉 `leading-*` 与 `font-weight-*`）。
+13. **tailwind-merge × 自定义 `--text-*` 陷阱**：tailwind-merge v3 不识别自定义 `--text-*` tokens（如 `text-type-section-title`），误归 `text-color` 组。修复在 [src/lib/utils.ts](src/lib/utils.ts) 中用 `extendTailwindMerge` 注册到 `font-size` 组。新加 `--text-*` 需同步更新。字号/字重/行高全部由 `@theme` 的 `--text-*` token 提供（含 `--text-*-font-weight`、`--text-*-line-height` 修饰符，Tailwind v4 原生支持），行高走 `--tw-leading` 机制故 `leading-*` 可正常覆盖；不要再用 `@layer utilities` 手写 `.text-type-*` 工具类强制 `font-size/line-height/font-weight`（会静默盖掉 `leading-*` 与 `font-weight-*`）。
 14. **多窗口 store 隔离**：FloatingPreview / EntertainmentPreview 是独立 webview，未挂载 `<App />`，不能直接读 store 倒计时数据。FloatingPreview 靠 `floating-preview-update` 事件推送，EntertainmentPreview 直接订阅 `countdown-update` 全局广播。
 15. **看门狗**：Rust 端每秒检查 `lock-slave-*` 窗口存活和屏幕覆盖完整性，Alt+F4 关窗后能自动重建。Watchdog 路径需要显式 `windows.clear()` 防止状态泄漏。
 16. **显示器策略**：主应用窗口（492×696）仅出现在主显示器。锁屏时主显示器展示完整交互，副显示器仅显示静态提示或不处理。不考虑副显示器上的任何复杂交互。
@@ -1122,15 +1122,15 @@ sequenceDiagram
 
 ## 16. 扩展与维护建议
 
-- **新增运动**：在 [src/data/exercises.ts](file:///d:/first_desktop/care-buddy/src/data/exercises.ts) 添加 Exercise 对象（遵循五段式说明），并在 [src/data/guided-configs.ts](file:///d:/first_desktop/care-buddy/src/data/guided-configs.ts) 配置引导参数。
-- **新增提醒类型**：在 [src/types/index.ts](file:///d:/first_desktop/care-buddy/src/types/index.ts) 扩展 `TaskIcon`，并在 [src/constants/index.ts](file:///d:/first_desktop/care-buddy/src/constants/index.ts) 添加默认任务。
-- **新增后端命令**：在 [src-tauri/src/lib.rs](file:///d:/first_desktop/care-buddy/src-tauri/src/lib.rs) 添加 `#[tauri::command]` 函数，并加入 `invoke_handler!` 宏；在 [src/services/tauri.ts](file:///d:/first_desktop/care-buddy/src/services/tauri.ts) 添加前端封装。
+- **新增运动**：在 [src/data/exercises.ts](src/data/exercises.ts) 添加 Exercise 对象（遵循五段式说明），并在 [src/data/guided-configs.ts](src/data/guided-configs.ts) 配置引导参数。
+- **新增提醒类型**：在 [src/types/index.ts](src/types/index.ts) 扩展 `TaskIcon`，并在 [src/constants/index.ts](src/constants/index.ts) 添加默认任务。
+- **新增后端命令**：在 [src-tauri/src/lib.rs](src-tauri/src/lib.rs) 添加 `#[tauri::command]` 函数，并加入 `invoke_handler!` 宏；在 [src/services/tauri.ts](src/services/tauri.ts) 添加前端封装。
 - **修改锁屏行为**：核心逻辑在 Rust 的 `start_timer_thread` / `enter_lock_mode` / `exit_lock_mode` 与前端 `LockScreenSlave` 中共同协作。看门狗每秒自愈窗口。
-- **新增基础设施 Hook**：在 [src/hooks/](file:///d:/first_desktop/care-buddy/src/hooks/) 添加 `useXxx.ts`，在 [App.tsx](file:///d:/first_desktop/care-buddy/src/App.tsx) JSX 上方按调用顺序加入。**严禁** 直接在 App.tsx 写 useEffect/setInterval/listen。
-- **新增 `--text-*` token**：同步在 [src/lib/utils.ts](file:///d:/first_desktop/care-buddy/src/lib/utils.ts) 的 `extendTailwindMerge` 中注册到 `font-size` 组。
+- **新增基础设施 Hook**：在 [src/hooks/](src/hooks/) 添加 `useXxx.ts`，在 [App.tsx](src/App.tsx) JSX 上方按调用顺序加入。**严禁** 直接在 App.tsx 写 useEffect/setInterval/listen。
+- **新增 `--text-*` token**：同步在 [src/lib/utils.ts](src/lib/utils.ts) 的 `extendTailwindMerge` 中注册到 `font-size` 组。
 - **新增 shadcn 组件**：通过 `npx shadcn add <name>`，组件落在 `src/components/ui/`。
 - **修改娱乐模式分发节奏**：调整 `EntertainmentModeInner.reminder_seconds`（默认 1200=20min），同步前端 `entertainmentReminderMinutes` 设置项。
-- **修改统计计数逻辑**：必须通过 [src/utils/statsRecorder.ts](file:///d:/first_desktop/care-buddy/src/utils/statsRecorder.ts) 的 `recordTaskCompletion` 统一入口，不要绕过幂等守卫。
+- **修改统计计数逻辑**：必须通过 [src/utils/statsRecorder.ts](src/utils/statsRecorder.ts) 的 `recordTaskCompletion` 统一入口，不要绕过幂等守卫。
 
 ---
 
