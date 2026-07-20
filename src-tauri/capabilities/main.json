@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
   "description": "Capability for the main window",
-  "windows": ["main", "lock-slave-*", "floating-window", "entertainment-window"],
+  "windows": ["main", "lock-slave-*", "capsule-window"],
   "permissions": [
     "core:default",
     "core:window:default",

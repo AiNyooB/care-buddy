@@ -129,3 +129,13 @@ export function unmuteAudio(): void {
     audioContext.resume();
   }
 }
+
+// HMR 防护：模块替换时关闭旧 AudioContext，避免泄漏
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (audioContext && audioContext.state !== 'closed') {
+      try { audioContext.close(); } catch { /* ignore */ }
+    }
+    audioContext = null;
+  });
+}

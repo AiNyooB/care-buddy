@@ -16,7 +16,7 @@ export interface Task {
   interval: number; // 分钟
   enabled: boolean;
   icon: TaskIcon;
-  lockDuration: number; // 秒
+  lockDuration?: number; // 秒，缺省时锁屏使用 60
   autoResetOnIdle: boolean;
   preNotificationSeconds: number;
   snoozeMinutes: number;

@@ -287,7 +287,9 @@ export function useGuidedExercise(): UseGuidedExerciseReturn {
 
   const startTimer = useCallback(() => {
     clearTimer();
-    const TICK_MS = 100; // 100ms tick 以支持小数秒的transition
+    // 250ms tick：active 阶段每秒整数减法足够；transition 阶段 0.1s 精度仍能正确触发 <= 0 判定
+    // （实际过渡时长比配置值多 0-250ms，可接受）
+    const TICK_MS = 250;
     let tickAccum = 0;
 
     timerRef.current = setInterval(() => {
@@ -300,6 +302,13 @@ export function useGuidedExercise(): UseGuidedExerciseReturn {
       if (s.status === 'prep') {
         if (tickAccum < 1000) return;
         tickAccum = 0;
+
+        // prepCountdown 守卫：prep=0 或 prepRemaining 已耗尽时立即进入第一步，不播报 "0"
+        const prepCountdown = s.guidedConfig?.prepCountdown ?? PREP_COUNTDOWN_DEFAULT;
+        if (prepCountdown <= 0 || s.prepRemaining <= 0) {
+          startStep(0, 1);
+          return;
+        }
 
         if (s.prepRemaining <= 1) {
           if (!mutedRef.current) speak(String(s.prepRemaining));

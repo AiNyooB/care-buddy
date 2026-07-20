@@ -6,6 +6,9 @@ const PREFIX = 'care_buddy_';
 
 /**
  * 获取存储值
+ *
+ * JSON 解析失败时备份原值到 `care_buddy__broken_<key>_<timestamp>`，再删除原 key 返回默认值。
+ * 这样用户在控制台能找回原始数据，避免静默丢失。
  */
 export function getStorage<T>(key: string, defaultValue: T): T {
   try {
@@ -13,8 +16,12 @@ export function getStorage<T>(key: string, defaultValue: T): T {
     if (item === null) return defaultValue;
     return JSON.parse(item) as T;
   } catch (e) {
-    console.warn(`[CareBuddy] Corrupted storage data for key "${key}", resetting to default:`, e);
+    console.warn(`[CareBuddy] Corrupted storage data for key "${key}", backing up and resetting:`, e);
     try {
+      const raw = localStorage.getItem(PREFIX + key);
+      if (raw !== null) {
+        localStorage.setItem(`${PREFIX}__broken_${key}_${Date.now()}`, raw);
+      }
       localStorage.removeItem(PREFIX + key);
     } catch { /* ignore */ }
     return defaultValue;

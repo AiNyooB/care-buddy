@@ -116,7 +116,16 @@ export function useLockScreenEvents() {
 
     setup().catch(console.warn);
 
+    // 30s 主动兜底：若 ref 仍 true 但 store 中 lockScreen.active 已 false，重置 ref
+    // 防止 enterLockMode 卡死且 lock-screen-completed 未到达时 ref 永久卡 true
+    const watchdog = setInterval(() => {
+      if (lockScreenCreating.current && !useHealthStore.getState().lockScreen.active) {
+        lockScreenCreating.current = false;
+      }
+    }, 30_000);
+
     return () => {
+      clearInterval(watchdog);
       unlistenNotification?.();
       unlistenLockOpen?.();
       unlistenLockCompleted?.();

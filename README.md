@@ -1,4 +1,4 @@
-<h1 align="center">健康办公助手 (Health Reminder)</h1>
+<h1 align="center">care-buddy</h1>
 
 <p align="center">
   care-buddy 是一款基于 Tauri v2 开发的轻量桌面健康提醒应用，帮你在长时间使用电脑的过程中自然建立健康的作息节奏，降低久坐、用眼过度等问题带来的健康负担。

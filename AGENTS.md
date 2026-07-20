@@ -26,7 +26,7 @@ Tauri 2 / React 19 / TypeScript 6 / Zustand 5 / Tailwind 4 / shadcn v4 (base-nov
 
 - **TypeScript** — strict 模式，使用 `@/` 路径别名（`src/`）
 - **React** — 函数组件 + hooks，状态管理用 Zustand（`src/store/index.ts` 统一导出）
-- **App.tsx 架构** — 基础设施副作用（Tauri listen/setInterval/初始化逻辑）必须封装在 `src/hooks/` 的自定义 hook 中，在 App.tsx JSX 上方以 `useXxx()` 形式调用。**严禁在 App.tsx 中直接写 useEffect/setInterval/listen**，修改 UI 时不得删除或注释这些 hook 调用行。当前 hook 列表：`useAppInit`、`useCountdownSync`、`useTriggerHealing`、`useFloatingManager`、`useEntertainmentManager`、`useModeTransition`、`useAppModeSync`、`useWorkMinutesTracker`、`useDailyStatsAutoSave`、`useLockScreenEvents`、`useIdleDetection`、`useSystemLockEvents`、`useTrayMenuEvents`、`usePauseStateSync`、`useSettingsSync`、`useNotificationPermission`
+- **App.tsx 架构** — 基础设施副作用（Tauri listen/setInterval/初始化逻辑）必须封装在 `src/hooks/` 的自定义 hook 中，在 App.tsx JSX 上方以 `useXxx()` 形式调用。**严禁在 App.tsx 中直接写 useEffect/setInterval/listen**，修改 UI 时不得删除或注释这些 hook 调用行。当前 hook 列表：`useAppInit`、`useCountdownSync`、`useTriggerHealing`、`useFloatingManager`、`useEntertainmentManager`、`useModeTransition`、`useAppModeSync`、`useWorkMinutesTracker`、`useDailyStatsAutoSave`、`useLockScreenEvents`、`useIdleDetection`、`useSystemLockEvents`、`useTrayMenuEvents`、`usePauseStateSync`、`useSettingsSync`、`useNotificationPermission`。另含组件级 Hook `useGuidedExercise`（在引导锻炼弹窗组件内调用，不在 App.tsx 顶层）。
 - **国际化** — key 定义在 `src/main.tsx` 内联对象（zhCN/enUS），组件内通过 `useTranslation()` 取值
 - **前后端通信** — 通过 Tauri IPC：前端用 `invoke()` 调用 Rust 命令，`listen()`/`emit()` 处理事件
 - **Rust 后端** — 主要逻辑集中在 `src-tauri/src/lib.rs`（timer、idle 检测、锁屏、托盘菜单、通知）
@@ -59,7 +59,10 @@ npm run build            # Vite build (输出到 dist/)
 npm run tauri dev        # Tauri 开发模式
 npm run tauri build      # 打包 NSIS 安装包
 npm run typecheck        # tsc --noEmit（唯一类型检查）
-# 无 lint / test 命令
+npm run test            # vitest 单元测试
+npm run test:watch      # vitest 监听模式
+npm run test:coverage   # vitest 覆盖率
+# 无 lint 命令
 ```
 
 CI（`.github/workflows/ci.yml`）：`npm run build` → `cargo check`（仅构建验证，不跑 typecheck）

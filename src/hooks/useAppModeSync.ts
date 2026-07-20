@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useHealthStore } from '@/store';
 import { getAppMode, getEntertainmentActive, onAppModeUpdate, onSettingsUpdate } from '@/services';
 import { listen } from '@tauri-apps/api/event';
@@ -10,11 +10,16 @@ import type { AppMode, FloatingDisplayStrategy } from '@/types';
  * - 监听 Rust 广播的 app-mode-changed（自动检测前台应用/其它窗口切换），同步到 Store。
  * - 监听 entertainment-mode-changed（娱乐模式激活/退出），同步到 Store。
  * - 监听 settings-updated，如果设置里的 appMode 变化也同步到 Store。
+ *
+ * cleanup 用 useRef 存储以避免 unmount 发生在 .then 之前时闭包变量为 null 的时序问题。
  */
 export function useAppModeSync() {
   const setAppMode = useHealthStore((s) => s.setAppMode);
   const updateSettings = useHealthStore((s) => s.updateSettings);
   const setEntertainmentActive = useHealthStore((s) => s.setEntertainmentActive);
+  const cleanupModeRef = useRef<(() => void) | null>(null);
+  const cleanupSettingsRef = useRef<(() => void) | null>(null);
+  const cleanupEntertainmentRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     getAppMode()
@@ -34,7 +39,6 @@ export function useAppModeSync() {
       })
       .catch(console.warn);
 
-    let cleanupMode: (() => void) | null = null;
     onAppModeUpdate((payload) => {
       const { mode, displayStrategy } = payload;
       if (mode !== useHealthStore.getState().appMode) {
@@ -45,10 +49,9 @@ export function useAppModeSync() {
         updateSettings({ floatingDisplayStrategy: displayStrategy as FloatingDisplayStrategy });
       }
     }).then((fn) => {
-      cleanupMode = fn;
+      cleanupModeRef.current = fn;
     });
 
-    let cleanupSettings: (() => void) | null = null;
     onSettingsUpdate((settings) => {
       const mode = settings.appMode as AppMode | undefined;
       if (mode && mode !== useHealthStore.getState().appMode) {
@@ -56,21 +59,20 @@ export function useAppModeSync() {
         updateSettings({ appMode: mode });
       }
     }).then((fn) => {
-      cleanupSettings = fn;
+      cleanupSettingsRef.current = fn;
     });
 
     // 监听娱乐模式激活/退出事件
-    let cleanupEntertainment: (() => void) | null = null;
     listen<{ active: boolean }>('entertainment-mode-changed', (event) => {
       setEntertainmentActive(event.payload.active);
     }).then((unlisten) => {
-      cleanupEntertainment = unlisten;
+      cleanupEntertainmentRef.current = unlisten;
     });
 
     return () => {
-      cleanupMode?.();
-      cleanupSettings?.();
-      cleanupEntertainment?.();
+      cleanupModeRef.current?.();
+      cleanupSettingsRef.current?.();
+      cleanupEntertainmentRef.current?.();
     };
   }, [setAppMode, updateSettings, setEntertainmentActive]);
 }

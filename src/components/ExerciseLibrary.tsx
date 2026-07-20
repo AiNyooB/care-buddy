@@ -156,10 +156,13 @@ function ExerciseRow({
     >
       <ItemContent>
         <ItemTitle className="items-center gap-1.5 text-foreground">
-          {exercise.name}
-          <span className="text-type-caption font-normal text-muted-foreground">
+          <span
+            className="text-type-caption font-normal"
+            style={{ color: priority.color }}
+          >
             {t('exercise.priority' + exercise.priority.charAt(0).toUpperCase() + exercise.priority.slice(1))}
           </span>
+          {exercise.name}
         </ItemTitle>
         <ItemDescription className="line-clamp-1">{exercise.description}</ItemDescription>
       </ItemContent>

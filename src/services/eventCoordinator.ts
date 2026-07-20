@@ -14,10 +14,8 @@ class EventCoordinator {
   floatingVisible = false;
   /** 预通知去重 */
   readonly notifiedPre = new Set<string>();
-  /** 统计计数幂等：上次记录的任务 ID */
-  lastRecordedTaskId: string | null = null;
-  /** 统计计数幂等：上次记录的时间戳 */
-  lastRecordedTime = 0;
+  /** 统计计数幂等：按 taskId 维度记录上次时间戳（500ms 窗口） */
+  readonly lastRecordedTaskTime: Map<string, number> = new Map();
   /** 连续帧观测到 triggered 的计数（自愈用，要求 ≥2 帧才重发） */
   readonly triggerStreak: Record<string, number> = {};
 
@@ -32,8 +30,7 @@ class EventCoordinator {
   clearAll() {
     this.clearTriggerState();
     this.floatingVisible = false;
-    this.lastRecordedTaskId = null;
-    this.lastRecordedTime = 0;
+    this.lastRecordedTaskTime.clear();
   }
 }
 

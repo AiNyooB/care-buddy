@@ -13,6 +13,16 @@ use tauri::{
     Listener, Manager, WindowEvent, State, Emitter, WebviewWindowBuilder, WebviewUrl, AppHandle, WebviewWindow,
 };
 use tauri_plugin_notification::NotificationExt;
+
+/// 统一封装 app.emit 并记录失败日志，避免 `let _ = app.emit(...)` 静默丢错。
+/// 用法：`emit_or_warn!(app, "event-name", payload)`
+macro_rules! emit_or_warn {
+    ($app:expr, $event:expr, $payload:expr) => {
+        if let Err(e) = $app.emit($event, $payload) {
+            eprintln!("[CareBuddy] emit {} failed: {}", $event, e);
+        }
+    };
+}
 use url::form_urlencoded;
 
 // ============= 空闲检测（Windows） =============
@@ -29,9 +39,12 @@ fn get_idle_seconds() -> u64 {
         };
 
         if GetLastInputInfo(&mut lii).as_bool() {
-            let current_tick = GetTickCount64();
-            let idle_ms = current_tick.wrapping_sub(lii.dwTime as u64);
-            (idle_ms / 1000) as u64
+            // lii.dwTime 是 u32（来自 GetTickCount），GetTickCount64 是 u64。
+            // 49.7 天后 dwTime 会回绕到 0，若直接用 u64 wrapping_sub 会产生天文数字 idle。
+            // 把 current_tick 也截断到 u32 与 dwTime 同源，u32 wrapping_sub 自然处理回绕。
+            let current_tick32 = GetTickCount64() as u32;
+            let idle_ms = current_tick32.wrapping_sub(lii.dwTime) as u64;
+            idle_ms / 1000
         } else {
             0
         }
@@ -49,9 +62,7 @@ const FLOATING_HEIGHT: f64 = 48.0;
 // 改触发态宽时须前后端同步；保留此常量便于 grep 对齐，故允许 dead_code。
 #[allow(dead_code)]
 const FLOATING_DEFAULT_WIDTH: f64 = 278.0;
-const FLOATING_PREVIEW_WIDTH: f64 = 156.0;      // 浮窗 预览态宽
-const ENTERTAINMENT_PREVIEW_WIDTH: f64 = 120.0; // 娱乐 idle 态宽
-
+const FLOATING_PREVIEW_WIDTH: f64 = 156.0;      // 胶囊 预览态宽
 // —— 胶囊窗口弹簧伸缩动画（移植 NetSpeed-Dynamic start_island_animation）——
 // ANIMATION_ID 做打断接续：新动画递增 ID，旧线程发现 ID 变化即退出。
 static CAPSULE_ANIMATION_ID: AtomicU32 = AtomicU32::new(0);
@@ -72,6 +83,20 @@ pub struct EntertainmentAppRule {
     #[serde(rename = "matchType")]
     pub match_type: String,
     pub pattern: String,
+    /// 缓存的 lower-case pattern（去掉 .exe 后缀），加载/同步时填充，避免 is_entertainment_foreground 每秒重算
+    #[serde(skip)]
+    pub pattern_lc: String,
+}
+
+impl EntertainmentAppRule {
+    /// 根据 pattern 字段填充 pattern_lc（lower-case + 去 .exe 后缀）
+    fn fill_pattern_lc(&mut self) {
+        let mut p = self.pattern.to_lowercase();
+        if p.ends_with(".exe") {
+            p = p.trim_end_matches(".exe").to_string();
+        }
+        self.pattern_lc = p;
+    }
 }
 
 #[derive(Clone, serde::Serialize, Debug)]
@@ -394,7 +419,8 @@ fn compute_total_secs(timer: &TaskTimer) -> u64 {
     } else if is_daily_task(&timer.config) {
         24 * 60 * 60
     } else {
-        timer.config.interval * 60
+        // saturating_mul 防止极端 interval 配置导致 u64 溢出（溢出时返回 u64::MAX，timer 永不触发，安全降级）
+        timer.config.interval.saturating_mul(60)
     }
 }
 
@@ -483,6 +509,10 @@ fn start_session_monitor(app_handle: tauri::AppHandle) {
                 None,
             ).unwrap_or(HWND::default());
 
+            if hwnd.0.is_null() {
+                eprintln!("[CareBuddy] CreateWindowExW failed, system lock/unlock events will not be detected");
+            }
+
             if !hwnd.0.is_null() {
                 let _ = WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION);
 
@@ -491,9 +521,9 @@ fn start_session_monitor(app_handle: tauri::AppHandle) {
                     if msg.message == WM_WTSSESSION_CHANGE {
                         let wparam = msg.wParam.0 as u32;
                         if wparam == WTS_SESSION_LOCK {
-                            let _ = app_handle.emit("system-locked", ());
+                            emit_or_warn!(app_handle, "system-locked", ());
                         } else if wparam == WTS_SESSION_UNLOCK {
-                            let _ = app_handle.emit("system-unlocked", ());
+                            emit_or_warn!(app_handle, "system-unlocked", ());
                         }
                     }
                     let _ = TranslateMessage(&msg);
@@ -583,14 +613,14 @@ fn sort_triggers(vec: &mut [(TaskTriggeredPayload, u64)]) {
 }
 
 fn rebuild_tray_menu(app: &AppHandle) {
-    let state = get_timer_state().lock().unwrap();
+    let state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
     let is_paused = state.paused;
     let mut tasks: Vec<TaskConfig> = state.tasks.values().map(|t| t.config.clone()).collect();
     tasks.sort_by(|a, b| a.id.cmp(&b.id));
     drop(state);
 
     // 获取当前语言
-    let lang = app.state::<LanguageState>().0.lock().unwrap().clone();
+    let lang = app.state::<LanguageState>().0.lock().unwrap_or_else(|e| e.into_inner()).clone();
 
     let quit = MenuItem::with_id(app, "quit", get_tray_text("quit", &lang), true, None::<&str>).unwrap();
     let show = MenuItem::with_id(app, "show", get_tray_text("show", &lang), true, None::<&str>).unwrap();
@@ -620,19 +650,19 @@ fn rebuild_tray_menu(app: &AppHandle) {
     ]).unwrap();
 
     let tray_state = app.state::<TrayState>();
-    let guard = tray_state.0.lock().unwrap();
+    let guard = tray_state.0.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(tray) = guard.as_ref() {
         let _ = tray.set_menu(Some(menu));
     }
     
     let pause_state = app.state::<PauseMenuState>();
-    *pause_state.0.lock().unwrap() = Some(pause);
+    *pause_state.0.lock().unwrap_or_else(|e| e.into_inner()) = Some(pause);
 }
 
 #[tauri::command]
 fn sync_tasks(app: tauri::AppHandle, tasks: Vec<TaskConfig>) {
     {
-        let mut state = get_timer_state().lock().unwrap();
+        let mut state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
         let now = Instant::now();
 
         // 保留现有任务的计时状态，只更新配置
@@ -717,7 +747,7 @@ fn sync_tasks(app: tauri::AppHandle, tasks: Vec<TaskConfig>) {
 
 #[tauri::command]
 fn timer_pause() {
-    let mut state = get_timer_state().lock().unwrap();
+    let mut state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
     if !state.paused {
         state.paused = true;
         if state.freeze_start.is_none() {
@@ -728,7 +758,7 @@ fn timer_pause() {
 
 #[tauri::command]
 fn timer_resume() {
-    let mut state = get_timer_state().lock().unwrap();
+    let mut state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
     if state.paused {
         state.paused = false;
         // 只有当所有冻结原因都解除后才补偿
@@ -742,12 +772,12 @@ fn timer_resume() {
 
 #[tauri::command]
 fn timer_is_paused() -> bool {
-    get_timer_state().lock().unwrap().paused
+    get_timer_state().lock().unwrap_or_else(|e| e.into_inner()).paused
 }
 
 #[tauri::command]
 fn timer_pause_task(task_id: String) {
-    let mut state = get_timer_state().lock().unwrap();
+    let mut state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
     let now = Instant::now();
     if let Some(timer) = state.tasks.get_mut(&task_id) {
         if timer.config.enabled && timer.disabled_at.is_none() {
@@ -758,7 +788,7 @@ fn timer_pause_task(task_id: String) {
 
 #[tauri::command]
 fn timer_resume_task(task_id: String) {
-    let mut state = get_timer_state().lock().unwrap();
+    let mut state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
     let now = Instant::now();
     if let Some(timer) = state.tasks.get_mut(&task_id) {
         if timer.config.enabled {
@@ -773,7 +803,7 @@ fn timer_resume_task(task_id: String) {
 
 #[tauri::command]
 fn timer_reset_task(app: AppHandle, task_id: String) {
-    let mut state = get_timer_state().lock().unwrap();
+    let mut state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
     let now = Instant::now();
     let payload = if let Some(timer) = state.tasks.get_mut(&task_id) {
         timer.reset_time = now;
@@ -794,7 +824,7 @@ fn timer_reset_task(app: AppHandle, task_id: String) {
     };
     drop(state);  // 释放锁再 emit
     if let Some((countdown, triggered, paused, snoozed)) = payload {
-        let _ = app.emit("task-reset-confirmed", serde_json::json!({
+        emit_or_warn!(app,"task-reset-confirmed", serde_json::json!({
             "task_id": task_id,
             "countdown": countdown,
             "triggered": triggered,
@@ -806,7 +836,7 @@ fn timer_reset_task(app: AppHandle, task_id: String) {
 
 #[tauri::command]
 fn timer_reset_all(app: AppHandle) {
-    let mut state = get_timer_state().lock().unwrap();
+    let mut state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
     let now = Instant::now();
     let task_ids: Vec<String> = state.tasks.keys().cloned().collect();
     for timer in state.tasks.values_mut() {
@@ -831,7 +861,7 @@ fn timer_reset_all(app: AppHandle) {
         .collect();
     drop(state);  // 释放锁再 emit
     for (task_id, countdown, triggered, paused, snoozed) in payloads {
-        let _ = app.emit("task-reset-confirmed", serde_json::json!({
+        emit_or_warn!(app,"task-reset-confirmed", serde_json::json!({
             "task_id": task_id,
             "countdown": countdown,
             "triggered": triggered,
@@ -841,18 +871,18 @@ fn timer_reset_all(app: AppHandle) {
     }
     // 清理娱乐模式最近发射缓存 + 重置倒计时 + 清 snooze，避免重置后旧累积任务再次弹出或倒计时卡住
     if let Some(ent_state) = app.try_state::<EntertainmentModeState>() {
-        let mut guard = ent_state.0.lock().unwrap();
+        let mut guard = ent_state.0.lock().unwrap_or_else(|e| e.into_inner());
         guard.last_reminder_at = Some(Instant::now());
         guard.last_sent = None;
         guard.snoozed_until = None;
     }
-    hide_entertainment_window(&app);
-    let _ = app.emit("entertainment-task-cleared", serde_json::json!({ "clearAll": true }));
+    hide_capsule_window(&app);
+    emit_or_warn!(app,"entertainment-task-cleared", serde_json::json!({ "clearAll": true }));
 }
 
 #[tauri::command]
 fn timer_toggle_task(task_id: String, enabled: bool, interval_minutes: u64) {
-    let mut state = get_timer_state().lock().unwrap();
+    let mut state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
     let now = Instant::now();
     if let Some(timer) = state.tasks.get_mut(&task_id) {
         timer.config.enabled = enabled;
@@ -871,7 +901,7 @@ fn timer_toggle_task(task_id: String, enabled: bool, interval_minutes: u64) {
 
 #[tauri::command]
 fn timer_snooze_task(task_id: String, minutes: u64) {
-    let mut state = get_timer_state().lock().unwrap();
+    let mut state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
     let now = Instant::now();
     if let Some(timer) = state.tasks.get_mut(&task_id) {
         let snooze_duration = Duration::from_secs(minutes * 60);
@@ -885,10 +915,18 @@ fn timer_snooze_task(task_id: String, minutes: u64) {
 
 #[tauri::command]
 fn get_countdowns() -> Vec<CountdownInfo> {
-    let state = get_timer_state().lock().unwrap();
+    let state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
     let now = Instant::now();
     let frozen_now = if state.is_frozen() {
-        state.freeze_start.unwrap_or(now)
+        match state.freeze_start {
+            Some(t) => t,
+            None => {
+                // 理论不应出现：is_frozen() 触发路径都同步写入 freeze_start。
+                // 加 warn 便于排查；用 now 兜底（即不补偿，倒计时静止）。
+                eprintln!("[CareBuddy] Warning: is_frozen() but freeze_start=None, no compensation applied");
+                now
+            }
+        }
     } else {
         now
     };
@@ -957,7 +995,7 @@ fn timer_reopen_triggered(app: tauri::AppHandle) {
     // 启动期抑制：app mode 未初始化时不重发，避免抑制窗口内的任务提前分发；
     // 待 app mode 确定后由下一帧自愈重新接管（修复通知模式滞留 #1）。
     let initialized = if let Some(state) = app.try_state::<AppModeState>() {
-        state.0.lock().unwrap().initialized
+        state.0.lock().unwrap_or_else(|e| e.into_inner()).initialized
     } else {
         false
     };
@@ -967,7 +1005,7 @@ fn timer_reopen_triggered(app: tauri::AppHandle) {
 
     // 锁屏/系统锁屏期间冻结，不执行任何分发（避免娱乐窗口覆盖锁屏）
     {
-        let state = get_timer_state().lock().unwrap();
+        let state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
         if state.is_frozen() {
             return;
         }
@@ -975,7 +1013,7 @@ fn timer_reopen_triggered(app: tauri::AppHandle) {
 
     // 收集仍处于 triggered 的任务，并携带其实时剩余时间，供确定性排序
     let triggered: Vec<(TaskTriggeredPayload, u64)> = {
-        let state = get_timer_state().lock().unwrap();
+        let state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
         let now = Instant::now();
         state.tasks.values()
             .filter(|t| t.triggered)
@@ -1005,14 +1043,14 @@ fn timer_reopen_triggered(app: tauri::AppHandle) {
     }
 
     let app_mode = if let Some(state) = app.try_state::<AppModeState>() {
-        state.0.lock().unwrap().mode.clone()
+        state.0.lock().unwrap_or_else(|e| e.into_inner()).mode.clone()
     } else {
         "notification".to_string()
     };
 
     // 娱乐模式激活时走独立娱乐分发，跳过 appMode 分发（与主循环一致）
     let entertainment_active = app.try_state::<EntertainmentModeState>()
-        .map(|s| s.0.lock().unwrap().is_active)
+        .map(|s| s.0.lock().unwrap_or_else(|e| e.into_inner()).is_active)
         .unwrap_or(false);
     if entertainment_active {
         // 娱乐模式激活时任务触发被抑制（独立节奏由主循环负责），此处直接跳过，不分发任务通知
@@ -1021,7 +1059,7 @@ fn timer_reopen_triggered(app: tauri::AppHandle) {
 
     if app_mode == "notification" {
         for (task, _) in &triggered {
-            let _ = app.emit("task-notification", serde_json::json!({
+            emit_or_warn!(app,"task-notification", serde_json::json!({
                 "taskId": task.id,
                 "title": task.title,
                 "desc": task.desc,
@@ -1031,7 +1069,7 @@ fn timer_reopen_triggered(app: tauri::AppHandle) {
         // 通知模式"自动完成"语义：重发后由后端立即重置，避免 triggered 永久滞留、
         // 主圆环卡 0（与正常分发路径一致）。
         {
-            let mut state = get_timer_state().lock().unwrap();
+            let mut state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
             let now = Instant::now();
             for (task, _) in &triggered {
                 if let Some(timer) = state.tasks.get_mut(&task.id) {
@@ -1046,15 +1084,15 @@ fn timer_reopen_triggered(app: tauri::AppHandle) {
         sort_triggers(&mut sorted);
         let first = &sorted[0];
         let merged_ids: Vec<String> = sorted.iter().skip(1).map(|(t, _)| t.id.clone()).collect();
-        let _ = app.emit("lock-screen-open", serde_json::json!({
+        emit_or_warn!(app,"lock-screen-open", serde_json::json!({
             "task_id": first.0.id,
             "remaining": 0,
             "merged_ids": merged_ids
         }));
     } else if app_mode == "floating" {
-        let _ = show_floating_window_now(&app);
+        let _ = show_capsule_window(&app);
         for (task, _) in &triggered {
-            let _ = app.emit("floating-task-triggered", serde_json::json!({
+            emit_or_warn!(app,"floating-task-triggered", serde_json::json!({
                 "taskId": task.id,
                 "title": task.title,
                 "desc": task.desc,
@@ -1068,7 +1106,7 @@ fn timer_reopen_triggered(app: tauri::AppHandle) {
 fn timer_set_system_locked(app: tauri::AppHandle, locked: bool) {
     let now = Instant::now();
     let just_locked = {
-        let mut state = get_timer_state().lock().unwrap();
+        let mut state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
         let just_locked = locked && !state.system_locked;
         if just_locked {
             // 刚锁屏
@@ -1093,22 +1131,22 @@ fn timer_set_system_locked(app: tauri::AppHandle, locked: bool) {
     // 在 timer_state 锁外执行，避免与 EntertainmentModeState 锁形成嵌套（参考 idle 路径 L1522 注释）。
     if just_locked {
         if let Some(ent_state) = app.try_state::<EntertainmentModeState>() {
-            let mut guard = ent_state.0.lock().unwrap();
+            let mut guard = ent_state.0.lock().unwrap_or_else(|e| e.into_inner());
             guard.is_active = false;
             guard.grace_deadline = None;
             guard.last_reminder_at = None;
             guard.last_sent = None;
             guard.snoozed_until = None;
         }
-        hide_entertainment_window(&app);
-        let _ = app.emit("entertainment-task-cleared", serde_json::json!({ "clearAll": true }));
-        let _ = app.emit("entertainment-mode-changed", serde_json::json!({ "active": false }));
+        hide_capsule_window(&app);
+        emit_or_warn!(app,"entertainment-task-cleared", serde_json::json!({ "clearAll": true }));
+        emit_or_warn!(app,"entertainment-mode-changed", serde_json::json!({ "active": false }));
     }
 }
 
 #[tauri::command]
 fn timer_set_lock_screen_active(app: tauri::AppHandle, active: bool) {
-    let mut state = get_timer_state().lock().unwrap();
+    let mut state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
     if active && !state.lock_screen_active {
         // 刚进入锁屏模式
         state.lock_screen_active = true;
@@ -1132,7 +1170,7 @@ fn timer_set_lock_screen_active(app: tauri::AppHandle, active: bool) {
 
         // 通知浮窗清除被清零的 triggered 任务（防止浮窗卡在过期 triggered 态）
         for id in &cleared {
-            let _ = app.emit("floating-task-cleared", serde_json::json!({ "taskId": id }));
+            emit_or_warn!(app,"floating-task-cleared", serde_json::json!({ "taskId": id }));
         }
 
         // Restore main window from always-on-top
@@ -1144,14 +1182,14 @@ fn timer_set_lock_screen_active(app: tauri::AppHandle, active: bool) {
 
 #[tauri::command]
 fn set_idle_threshold(seconds: u64) {
-    let mut state = get_timer_state().lock().unwrap();
+    let mut state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
     state.idle_threshold_seconds = seconds;
 }
 
 #[tauri::command]
 fn set_entertainment_idle_threshold(minutes: u64, app: AppHandle) {
     if let Some(ent_state) = app.try_state::<EntertainmentModeState>() {
-        let mut guard = ent_state.0.lock().unwrap();
+        let mut guard = ent_state.0.lock().unwrap_or_else(|e| e.into_inner());
         guard.idle_threshold_seconds = minutes * 60;
     }
 }
@@ -1161,7 +1199,7 @@ fn set_entertainment_idle_threshold(minutes: u64, app: AppHandle) {
 #[tauri::command]
 fn set_entertainment_reminder(minutes: u64, app: AppHandle) {
     if let Some(ent_state) = app.try_state::<EntertainmentModeState>() {
-        let mut guard = ent_state.0.lock().unwrap();
+        let mut guard = ent_state.0.lock().unwrap_or_else(|e| e.into_inner());
         guard.reminder_seconds = minutes.max(1) * 60;
         guard.last_reminder_at = Some(Instant::now());
     }
@@ -1172,7 +1210,7 @@ fn set_entertainment_reminder(minutes: u64, app: AppHandle) {
 #[tauri::command]
 fn set_entertainment_exit_threshold(minutes: u64, app: AppHandle) {
     if let Some(ent_state) = app.try_state::<EntertainmentModeState>() {
-        let mut guard = ent_state.0.lock().unwrap();
+        let mut guard = ent_state.0.lock().unwrap_or_else(|e| e.into_inner());
         guard.grace_seconds = minutes.max(1) * 60;
     }
 }
@@ -1183,7 +1221,7 @@ fn set_entertainment_exit_threshold(minutes: u64, app: AppHandle) {
 #[tauri::command]
 fn snooze_entertainment(minutes: u64, app: AppHandle) {
     if let Some(ent_state) = app.try_state::<EntertainmentModeState>() {
-        let mut guard = ent_state.0.lock().unwrap();
+        let mut guard = ent_state.0.lock().unwrap_or_else(|e| e.into_inner());
         let mins = minutes.max(1);
         guard.snoozed_until = Some(Instant::now() + Duration::from_secs(mins * 60));
         guard.last_sent = None;
@@ -1193,7 +1231,7 @@ fn snooze_entertainment(minutes: u64, app: AppHandle) {
 #[tauri::command]
 fn set_entertainment_mode_enabled(enabled: bool, app: AppHandle) {
     if let Some(ent_state) = app.try_state::<EntertainmentModeState>() {
-        let mut guard = ent_state.0.lock().unwrap();
+        let mut guard = ent_state.0.lock().unwrap_or_else(|e| e.into_inner());
         let was_active = guard.is_active;
         guard.enabled = enabled;
         if !enabled {
@@ -1205,19 +1243,19 @@ fn set_entertainment_mode_enabled(enabled: bool, app: AppHandle) {
         }
         // 状态变化时 emit 事件，前端实时同步 entertainmentActive
         if was_active {
-            let _ = app.emit("entertainment-mode-changed", serde_json::json!({ "active": false }));
+            emit_or_warn!(app,"entertainment-mode-changed", serde_json::json!({ "active": false }));
         }
     }
     // 关闭开关时隐藏娱乐窗口 + 通知娱乐窗口清除 React 触发态
     if !enabled {
-        let _ = app.emit("entertainment-task-cleared", serde_json::json!({ "clearAll": true }));
-        hide_entertainment_window(&app);
+        emit_or_warn!(app,"entertainment-task-cleared", serde_json::json!({ "clearAll": true }));
+        hide_capsule_window(&app);
     }
 }
 
 #[tauri::command]
 fn get_idle_threshold() -> u64 {
-    let state = get_timer_state().lock().unwrap();
+    let state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
     state.idle_threshold_seconds
 }
 
@@ -1242,10 +1280,10 @@ fn start_timer_thread(app_handle: AppHandle) {
             // 锁屏状态看门狗：先检测外部关闭 → 再覆盖率自愈
             // ⚠️ 必须外部关闭检测先跑，否则 Alt+F4 只关了一个窗口后覆盖率自愈会重建
             {
-                let is_locked_wd = get_timer_state().lock().unwrap().lock_screen_active;
+                let is_locked_wd = get_timer_state().lock().unwrap_or_else(|e| e.into_inner()).lock_screen_active;
                 if is_locked_wd {
                     let lock_state = app_handle.state::<LockState>();
-                    let guard = lock_state.0.lock().unwrap();
+                    let guard = lock_state.0.lock().unwrap_or_else(|e| e.into_inner());
                     let windows = guard.windows.clone();
                     let all_gone = windows.iter().all(|label| {
                         app_handle.get_webview_window(label).is_none()
@@ -1253,7 +1291,7 @@ fn start_timer_thread(app_handle: AppHandle) {
                     if all_gone && !windows.is_empty() {
                         drop(guard);
                         eprintln!("[CareBuddy] Lock screen windows were externally closed, resetting state");
-                        let mut timer_state = get_timer_state().lock().unwrap();
+                        let mut timer_state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
                         timer_state.lock_screen_active = false;
                         let cleared = if !timer_state.is_frozen() {
                             if let Some(freeze_start) = timer_state.freeze_start.take() {
@@ -1269,15 +1307,15 @@ fn start_timer_thread(app_handle: AppHandle) {
                             let _ = main.set_always_on_top(false);
                         }
                         // 通知前端清除 lockScreen.active 和 lockScreenCreating ref
-                        let _ = app_handle.emit("lock-screen-completed", serde_json::json!({ "completed": false }));
+                        emit_or_warn!(app_handle, "lock-screen-completed", serde_json::json!({ "completed": false }));
                         // 通知浮窗清除被清零的 triggered 任务
                         for id in &cleared {
-                            let _ = app_handle.emit("floating-task-cleared", serde_json::json!({ "taskId": id }));
+                            emit_or_warn!(app_handle, "floating-task-cleared", serde_json::json!({ "taskId": id }));
                         }
                         // 清理 LockState.windows 和 args（与 exit_lock_mode 对齐，防止 Vec 无界增长）
                         {
                             let lock_state = app_handle.state::<LockState>();
-                            let mut state_guard = lock_state.0.lock().unwrap();
+                            let mut state_guard = lock_state.0.lock().unwrap_or_else(|e| e.into_inner());
                             state_guard.windows.clear();
                             state_guard.args = None;
                         }
@@ -1286,10 +1324,10 @@ fn start_timer_thread(app_handle: AppHandle) {
             }
 
             // 锁屏状态覆盖率自愈（仅当 lock_screen_active 仍为 true 时运行，外部关闭后已置 false 则不执行）
-            let is_locked = get_timer_state().lock().unwrap().lock_screen_active;
+            let is_locked = get_timer_state().lock().unwrap_or_else(|e| e.into_inner()).lock_screen_active;
             if is_locked {
                 let lock_state = app_handle.state::<LockState>();
-                let mut guard = lock_state.0.lock().unwrap();
+                let mut guard = lock_state.0.lock().unwrap_or_else(|e| e.into_inner());
                 let windows = guard.windows.clone();
                 let args = guard.args.clone();
 
@@ -1357,7 +1395,7 @@ fn start_timer_thread(app_handle: AppHandle) {
             
 
             {
-                let mut state = get_timer_state().lock().unwrap();
+                let mut state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
 
                 // 如果处于冻结状态（暂停、系统锁屏或锁屏模式激活），跳过检查
                 if state.is_frozen() {
@@ -1374,7 +1412,7 @@ fn start_timer_thread(app_handle: AppHandle) {
                 let (entertainment_active, entertainment_threshold) = app_handle
                     .try_state::<EntertainmentModeState>()
                     .map(|s| {
-                        let g = s.0.lock().unwrap();
+                        let g = s.0.lock().unwrap_or_else(|e| e.into_inner());
                         (g.is_active, g.idle_threshold_seconds)
                     })
                     .unwrap_or((false, 1800));
@@ -1400,13 +1438,6 @@ fn start_timer_thread(app_handle: AppHandle) {
                     idle_entered = true;
 
                     // 1) 勾选了「空闲重置」的任务：空闲时直接重启倒计时（原有行为，不变）
-                    for timer in state.tasks.values_mut() {
-                        if timer.config.auto_reset_on_idle && timer.config.enabled {
-                            timer.reset_time = now;
-                            timer.triggered = false;
-                        }
-                    }
-
                     // 2) 「离开即重置」（产品决策，见下方说明）：用户一离开，任何仍处于
                     //    triggered 状态的任务都必须解除触发态，而不是把提醒挂起、等用户回来
                     //    手动处理。
@@ -1421,8 +1452,17 @@ fn start_timer_thread(app_handle: AppHandle) {
                     //    仅清 triggered 而不重置 reset_time 会导致恢复瞬间 remaining 仍为 0 而
                     //    立即重新触发，所以必须一并 `reset_time = now`（闲置期间 effective_now
                     //    锁定在 idle_start，剩余时间冻结为满值）。
+                    //
+                    // 合并 1)+2) 为单次遍历：auto_reset_on_idle 任务先重置；否则若 triggered 也重置。
+                    // 两分支语义等价（都把 triggered=false + reset_time=now），用 if/else if 保持原行为。
                     for timer in state.tasks.values_mut() {
-                        if timer.config.enabled && timer.triggered {
+                        if !timer.config.enabled {
+                            continue;
+                        }
+                        if timer.config.auto_reset_on_idle {
+                            timer.reset_time = now;
+                            timer.triggered = false;
+                        } else if timer.triggered {
                             timer.triggered = false;
                             timer.reset_time = now;
                         }
@@ -1432,20 +1472,21 @@ fn start_timer_thread(app_handle: AppHandle) {
                     state.is_idle = false;
 
                     // 1) 「空闲重置」任务：从头开始倒计时（原有行为，不变）
-                    for timer in state.tasks.values_mut() {
-                        if timer.config.auto_reset_on_idle && timer.config.enabled {
-                            timer.reset_time = now;
-                            timer.triggered = false;
-                        }
-                    }
-
                     // 2) 「离开即重置」兜底：恢复时再次确保没有遗留的 triggered 态。
                     //    正常情况下 idle 开始时已清除；此处防御性再清一次，覆盖「闲置期间
                     //    仍有 triggered 残留」的极端路径，杜绝浮窗卡触发态（排查入口：
                     //    若将来出现恢复后胶囊仍是提醒态，先查这里与 FloatingPreview 的
                     //    idle-status-changed 监听是否仍然生效）。
+                    //
+                    // 合并 1)+2) 为单次遍历（与 idle 进入分支同结构）。
                     for timer in state.tasks.values_mut() {
-                        if timer.config.enabled && timer.triggered {
+                        if !timer.config.enabled {
+                            continue;
+                        }
+                        if timer.config.auto_reset_on_idle {
+                            timer.reset_time = now;
+                            timer.triggered = false;
+                        } else if timer.triggered {
                             timer.triggered = false;
                             timer.reset_time = now;
                         }
@@ -1571,13 +1612,13 @@ fn start_timer_thread(app_handle: AppHandle) {
             // 注意：保留 last_reminder_at（倒计时起点），避免空闲恢复后 countdown-update 读到 None 返回 00:00。
             if idle_entered {
                 if let Some(ent_state) = app_handle.try_state::<EntertainmentModeState>() {
-                    let mut guard = ent_state.0.lock().unwrap();
+                    let mut guard = ent_state.0.lock().unwrap_or_else(|e| e.into_inner());
                     guard.is_active = false;
                     guard.grace_deadline = None;
                     guard.last_sent = None;
                     guard.snoozed_until = None;
                 }
-                hide_entertainment_window(&app_handle);
+                hide_capsule_window(&app_handle);
                 let _ = app_handle.emit("entertainment-task-cleared", serde_json::json!({ "clearAll": true }));
                 let _ = app_handle.emit("entertainment-mode-changed", serde_json::json!({ "active": false }));
             }
@@ -1588,7 +1629,7 @@ fn start_timer_thread(app_handle: AppHandle) {
             // 未初始化时跳过分发（任务已 triggered=true，待初始化后下一 tick 正常分发）。
             let (app_mode_initialized, app_mode) = {
                 if let Some(state) = app_handle.try_state::<AppModeState>() {
-                    let guard = state.0.lock().unwrap();
+                    let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
                     (guard.initialized, guard.mode.clone())
                 } else {
                     (false, "notification".to_string())
@@ -1602,7 +1643,7 @@ fn start_timer_thread(app_handle: AppHandle) {
 
             let entertainment_active = {
                 let ent_state = app_handle.state::<EntertainmentModeState>();
-                let mut guard = ent_state.0.lock().unwrap();
+                let mut guard = ent_state.0.lock().unwrap_or_else(|e| e.into_inner());
                 let grace_seconds = guard.grace_seconds;  // 宽限期（秒），可配置，覆盖临时切出场景
                 if !guard.enabled {
                     // 用户关闭开关：立即退出，清空状态
@@ -1616,7 +1657,7 @@ fn start_timer_thread(app_handle: AppHandle) {
                     }
                     if prev_active {
                         let _ = app_handle.emit("entertainment-mode-changed", serde_json::json!({ "active": false }));
-                        hide_entertainment_window(&app_handle);
+                        hide_capsule_window(&app_handle);
                     }
                     false
                 } else {
@@ -1633,8 +1674,7 @@ fn start_timer_thread(app_handle: AppHandle) {
                             }
                             let _ = app_handle.emit("entertainment-mode-changed", serde_json::json!({ "active": true }));
                             // 娱乐窗口常驻：激活时立即显示（idle 态显示统一倒计时）
-                            let _ = show_entertainment_window_now(&app_handle);
-                            slide_out_and_hide(&app_handle, "floating-window");
+                            let _ = show_capsule_window(&app_handle);
                         }
                     } else if prev_active {
                         // 前台不匹配但之前激活：进入或保持宽限期
@@ -1651,7 +1691,6 @@ fn start_timer_thread(app_handle: AppHandle) {
                             guard.last_reminder_at = None;
                             guard.snoozed_until = None;
                             let _ = app_handle.emit("entertainment-mode-changed", serde_json::json!({ "active": false }));
-                            slide_out_and_hide(&app_handle, "entertainment-window");
                         }
                         // 宽限期内：保持 is_active = true，不 emit 事件（前端无感）
                     }
@@ -1663,7 +1702,7 @@ fn start_timer_thread(app_handle: AppHandle) {
                 // 娱乐模式独立提醒节奏：完全不读取/合并任何任务的 interval，
                 // 仅按用户设置的 reminder_seconds 周期发射一条写死的「健康休息」payload。
                 let ent_state = app_handle.state::<EntertainmentModeState>();
-                let mut guard = ent_state.0.lock().unwrap();
+                let mut guard = ent_state.0.lock().unwrap_or_else(|e| e.into_inner());
                 let now = Instant::now();
                 // snoozed 期间不 fire；snooze 截止后自动清 snoozed_until 并以当下为新的 last_reminder_at
                 if let Some(until) = guard.snoozed_until {
@@ -1689,7 +1728,7 @@ fn start_timer_thread(app_handle: AppHandle) {
                         }
                     };
                 if should_fire {
-                    let _ = show_entertainment_window_now(&app_handle);
+                    let _ = show_capsule_window(&app_handle);
                     let payload = serde_json::json!({
                         "taskId": "entertainment-unified",
                         "title": "健康休息",
@@ -1722,7 +1761,7 @@ fn start_timer_thread(app_handle: AppHandle) {
                             }));
                         }
                         {
-                            let mut state = get_timer_state().lock().unwrap();
+                            let mut state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
                             let now = Instant::now();
                             for (task, _) in &tasks_to_trigger {
                                 if let Some(timer) = state.tasks.get_mut(&task.id) {
@@ -1737,7 +1776,7 @@ fn start_timer_thread(app_handle: AppHandle) {
                         merged_ids.extend(merged_near_ids.iter().cloned());
                         // lock 模式下对 near-miss 任务应用 side effects
                         {
-                            let mut state = get_timer_state().lock().unwrap();
+                            let mut state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
                             let now = Instant::now();
                             for near_id in &merged_near_ids {
                                 if let Some(timer) = state.tasks.get_mut(near_id) {
@@ -1754,7 +1793,7 @@ fn start_timer_thread(app_handle: AppHandle) {
                     } else if app_mode == "floating" {
                         // 浮窗模式（回归纯粹）：每任务独立触发，不合并
                         println!("[定时器] 📡 浮窗模式：触发任务数: {}", tasks_to_trigger.len());
-                        let _ = show_floating_window_now(&app_handle);
+                        let _ = show_capsule_window(&app_handle);
                         for (task, _) in &tasks_to_trigger {
                             let _ = app_handle.emit("floating-task-triggered", serde_json::json!({
                                 "taskId": task.id,
@@ -1770,10 +1809,10 @@ fn start_timer_thread(app_handle: AppHandle) {
             // 浮窗可见性同步延后到分发之后：通知模式分发会立即重置 triggered，
             // 此处重算后同步可避免该帧 has_triggered_tasks 仍为 true 导致的浮窗单帧闪现（#5）。
             let has_triggered_tasks = {
-                let s = get_timer_state().lock().unwrap();
+                let s = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
                 s.tasks.values().any(|t| t.triggered)
             };
-            sync_floating_visibility(&app_handle, has_triggered_tasks);
+            sync_capsule_visibility(&app_handle, has_triggered_tasks);
 
             // 发送空闲状态更新（只在状态变化时发送，或每 5 秒发送一次状态）
             if idle_status_changed {
@@ -1800,7 +1839,7 @@ fn start_timer_thread(app_handle: AppHandle) {
                 let ent_state = app_handle.try_state::<EntertainmentModeState>();
                 let (seconds, last, snoozed_until, snooze_minutes) = match ent_state {
                     Some(s) => {
-                        let g = s.0.lock().unwrap();
+                        let g = s.0.lock().unwrap_or_else(|e| e.into_inner());
                         (g.reminder_seconds, g.last_reminder_at, g.snoozed_until, g.snooze_minutes)
                     }
                     None => (2700u64, None, None, 10u32),
@@ -1876,7 +1915,7 @@ async fn save_settings(app: AppHandle, settings: String) -> Result<(), String> {
 
     // 解析合并窗口设置并更新 TimerState
     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&settings) {
-        let mut state = get_timer_state().lock().unwrap();
+        let mut state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
         if let Some(minutes) = json.get("mergeThreshold").and_then(|v| v.as_f64()) {
             state.merge_window_seconds = (minutes as u64) * 60;
         }
@@ -1887,8 +1926,8 @@ async fn save_settings(app: AppHandle, settings: String) -> Result<(), String> {
 
     // 通知浮窗更新状态（透明度/延后分钟数变化）
     if let Some(mode_state) = app.try_state::<AppModeState>() {
-        let guard = mode_state.0.lock().unwrap();
-        let _ = app.emit("app-mode-changed", serde_json::json!({
+        let guard = mode_state.0.lock().unwrap_or_else(|e| e.into_inner());
+        emit_or_warn!(app,"app-mode-changed", serde_json::json!({
             "mode": guard.mode,
             "opacity": guard.opacity,
             "snoozeMinutes": guard.snooze_minutes,
@@ -1898,10 +1937,10 @@ async fn save_settings(app: AppHandle, settings: String) -> Result<(), String> {
         // 娱乐模式激活时不操作浮窗，避免闪现
         if guard.mode == "floating" {
             let ent_active = app.try_state::<EntertainmentModeState>()
-                .map(|s| s.0.lock().unwrap().is_active)
+                .map(|s| s.0.lock().unwrap_or_else(|e| e.into_inner()).is_active)
                 .unwrap_or(false);
             if !ent_active {
-                if let Some(window) = app.get_webview_window("floating-window") {
+                if let Some(window) = app.get_webview_window("capsule-window") {
                     if guard.display_strategy == "on-trigger" {
                         let _ = window.hide();
                         let _ = window.set_always_on_top(false);
@@ -2030,7 +2069,7 @@ fn show_main_window(app: AppHandle) -> Result<(), String> {
     window.unminimize().map_err(|e| e.to_string())?;
     window.show().map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())?;
-    let _ = app.emit("app-restored", ());
+    emit_or_warn!(app,"app-restored", ());
     Ok(())
 }
 
@@ -2066,12 +2105,9 @@ fn get_saved_capsule_position() -> Option<(f64, f64)> {
     None
 }
 
-fn get_saved_floating_position() -> Option<(f64, f64)> {
-    get_saved_capsule_position()
-}
-
 /// 将已有窗口移动到共享胶囊位置（物理像素）
-/// 首次创建时由 ensure_* 设置位置，show 已存在窗口时由本函数同步
+/// 首次创建时由 ensure_capsule_window 设置位置，show 已存在窗口时由本函数同步
+#[allow(dead_code)]
 fn sync_window_position(app: &AppHandle, label: &str) {
     if let Some((sx, sy)) = get_saved_capsule_position() {
         if let Some(window) = app.get_webview_window(label) {
@@ -2080,31 +2116,32 @@ fn sync_window_position(app: &AppHandle, label: &str) {
     }
 }
 
-fn ensure_floating_window(app: &AppHandle, visible_on_create: bool) -> Result<WebviewWindow, String> {
-    if let Some(window) = app.get_webview_window("floating-window") {
+fn ensure_capsule_window(app: &AppHandle, visible_on_create: bool) -> Result<WebviewWindow, String> {
+    if let Some(window) = app.get_webview_window("capsule-window") {
         return Ok(window);
     }
 
     let builder = WebviewWindowBuilder::new(
         app,
-        "floating-window",
-        WebviewUrl::App(PathBuf::from("index.html?mode=floating")),
+        "capsule-window",
+        WebviewUrl::App(PathBuf::from("index.html?mode=capsule")),
     )
-    .title("FloatingPreview")
+    .title("Capsule")
     .inner_size(FLOATING_PREVIEW_WIDTH, FLOATING_HEIGHT)
     .resizable(false)
     .decorations(false)
     .skip_taskbar(true)
-    .visible(false)
+    .visible(visible_on_create)
     .transparent(true)
     .background_color(tauri::utils::config::Color(0, 0, 0, 0))
-    .shadow(false);
+    .shadow(false)
+    .always_on_top(true);
 
     // 尝试恢复保存的位置，否则居中于主显示器顶部。
     // 注意：前端保存的是「物理像素」(window.position() 返回 PhysicalPosition)，
     // 而 monitor 边界与 builder.position() 使用「逻辑像素」，需按各显示器 scale 换算，
     // 否则缩放屏(scale≠1)上位置错位甚至被判定越界而丢弃。
-    let builder = if let Some((sx, sy)) = get_saved_floating_position() {
+    let builder = if let Some((sx, sy)) = get_saved_capsule_position() {
         let matched_scale = app.available_monitors().ok().and_then(|monitors| {
             let mut found: Option<f64> = None;
             for m in monitors.iter() {
@@ -2142,125 +2179,53 @@ fn ensure_floating_window(app: &AppHandle, visible_on_create: bool) -> Result<We
 
     let window = builder.build().map_err(|e| e.to_string())?;
 
-    if visible_on_create {
-        let app_clone = app.clone();
-        thread::spawn(move || {
-            thread::sleep(Duration::from_millis(100));
-            if let Some(window) = app_clone.get_webview_window("floating-window") {
-                let _ = window.show();
-            }
-        });
-    }
-
     Ok(window)
 }
 
-fn show_floating_window_now(app: &AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("floating-window") {
-        sync_window_position(app, "floating-window");
-        let _ = window.set_always_on_top(true);
-        if !window.is_visible().unwrap_or(false) {
-            window.show().map_err(|e| e.to_string())?;
-        }
-    } else {
-        let window = ensure_floating_window(app, true)?;
-        sync_window_position(app, "floating-window");
-        window.set_always_on_top(true).map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
-// ============= 娱乐模式独立窗口（entertainment-window）=============
-// 与 floating-window 完全解耦：独立窗口实例、独立位置保存、独立生命周期
-
-fn get_saved_entertainment_position() -> Option<(f64, f64)> {
-    get_saved_capsule_position()
-}
-
-fn ensure_entertainment_window(app: &AppHandle, visible_on_create: bool) -> Result<WebviewWindow, String> {
-    if let Some(window) = app.get_webview_window("entertainment-window") {
-        return Ok(window);
-    }
-
-    let builder = WebviewWindowBuilder::new(
-        app,
-        "entertainment-window",
-        WebviewUrl::App(PathBuf::from("index.html?mode=entertainment")),
-    )
-    .title("EntertainmentPreview")
-    .inner_size(ENTERTAINMENT_PREVIEW_WIDTH, FLOATING_HEIGHT)
-    .resizable(false)
-    .decorations(false)
-    .skip_taskbar(true)
-    .always_on_top(true)
-    .visible(visible_on_create)
-    .transparent(true)
-    .background_color(tauri::utils::config::Color(0, 0, 0, 0))
-    .shadow(false);
-
-    // 尝试恢复保存的位置，否则居中于主显示器顶部（保存为物理像素，按 scale 换算为逻辑像素）
-    let builder = if let Some((sx, sy)) = get_saved_entertainment_position() {
-        let matched_scale = app.available_monitors().ok().and_then(|monitors| {
-            let mut found: Option<f64> = None;
-            for m in monitors.iter() {
-                let scale = m.scale_factor().max(1e-4);
-                let sx_l = sx / scale;
-                let sy_l = sy / scale;
-                let g = m.position();
-                let s = m.size();
-                let mx = g.x as f64;
-                let my = g.y as f64;
-                let mw = s.width as f64;
-                let mh = s.height as f64;
-                if sx_l >= mx && sx_l + ENTERTAINMENT_PREVIEW_WIDTH <= mx + mw
-                    && sy_l >= my && sy_l + FLOATING_HEIGHT <= my + mh {
-                    found = Some(scale);
-                    break;
-                }
-            }
-            found
-        });
-        if let Some(scale) = matched_scale {
-            builder.position(sx / scale, sy / scale)
-        } else if let Some(monitor) = app.primary_monitor().ok().flatten() {
-            let ms = monitor.size();
-            builder.position((ms.width as f64 - FLOATING_PREVIEW_WIDTH) / 2.0, 12.0)
-        } else {
-            builder
-        }
-    } else if let Some(monitor) = app.primary_monitor().ok().flatten() {
-        let ms = monitor.size();
-        builder.position((ms.width as f64 - FLOATING_PREVIEW_WIDTH) / 2.0, 12.0)
-    } else {
-        builder
-    };
-
-    let window = builder.build().map_err(|e| e.to_string())?;
-
-    Ok(window)
-}
-
-fn show_entertainment_window_now(app: &AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("entertainment-window") {
-        sync_window_position(app, "entertainment-window");
-        if !window.is_visible().unwrap_or(false) {
-            window.show().map_err(|e| e.to_string())?;
-        }
-    } else {
-        let _window = ensure_entertainment_window(app, true)?;
-        sync_window_position(app, "entertainment-window");
-    }
-    Ok(())
-}
-
-fn hide_entertainment_window(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("entertainment-window") {
+fn hide_capsule_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("capsule-window") {
         let _ = window.hide();
-        let _ = window.set_always_on_top(false);
     }
+}
+
+/// 裸 Win32 置顶（参考 NetSpeed force_window_topmost），仅改 z-order，不碰位置/尺寸
+fn force_capsule_topmost(app: &AppHandle) {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::SetWindowPos;
+        use windows::Win32::UI::WindowsAndMessaging::{SWP_NOMOVE, SWP_NOSIZE, SWP_NOACTIVATE};
+
+        if let Some(window) = app.get_webview_window("capsule-window") {
+            if let Ok(hwnd) = window.hwnd() {
+                let _ = unsafe {
+                    SetWindowPos(
+                        HWND(hwnd.0),
+                        HWND(-1isize as _),
+                        0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                    )
+                };
+            }
+        }
+    }
+}
+
+fn show_capsule_window(app: &AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("capsule-window") {
+        if !window.is_visible().unwrap_or(false) {
+            window.show().map_err(|e| e.to_string())?;
+        }
+        force_capsule_topmost(app);
+    } else {
+        let _window = ensure_capsule_window(app, true)?;
+        force_capsule_topmost(app);
+    }
+    Ok(())
 }
 
 // 窗口滑出动画：向上偏移，然后隐藏
+#[allow(dead_code)]
 fn slide_out_and_hide(app: &AppHandle, label: &str) {
     #[cfg(target_os = "windows")]
     {
@@ -2342,32 +2307,32 @@ fn slide_out_and_hide(app: &AppHandle, label: &str) {
 
 #[tauri::command]
 fn show_floating_window(app: AppHandle, state: State<FloatingState>) -> Result<(), String> {
-    *state.0.lock().unwrap() = true;
+    *state.0.lock().unwrap_or_else(|e| e.into_inner()) = true;
     let app_for_window = app.clone();
     tauri::async_runtime::spawn(async move {
-        let _ = show_floating_window_now(&app_for_window);
+        let _ = show_capsule_window(&app_for_window);
     });
     Ok(())
 }
 
 #[tauri::command]
 fn hide_floating_window(app: AppHandle, state: State<FloatingState>) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("floating-window") {
+    if let Some(window) = app.get_webview_window("capsule-window") {
         window.hide().map_err(|e| e.to_string())?;
     }
-    *state.0.lock().unwrap() = false;
+    *state.0.lock().unwrap_or_else(|e| e.into_inner()) = false;
     Ok(())
 }
 
 #[tauri::command]
 fn set_floating_window_always_on_top(app: AppHandle, always_on_top: bool) -> Result<(), String> {
-    let window = ensure_floating_window(&app, false)?;
+    let window = ensure_capsule_window(&app, false)?;
     window.set_always_on_top(always_on_top).map_err(|e| e.to_string())
 }
 
 /// 胶囊窗口整体弹簧伸缩（消除 WebView2 中间帧宽度缓存导致的裁切）。
 /// 由前端在 phase 切换时调用：胶囊=窗口，前端 w-full 自动跟随窗口物理尺寸。
-/// - window_label: "floating-window" | "entertainment-window"
+/// - window_label: "capsule-window"
 /// - target_width: 目标逻辑宽（预览/idle 或触发态），目标高恒为 FLOATING_HEIGHT
 /// - is_pinned: 预留参数（当前统一顶部居中锚定，不区分）
 #[tauri::command]
@@ -2498,7 +2463,7 @@ fn start_floating_drag(app: AppHandle) {
         use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, PostMessageW, GA_ROOT, WM_NCLBUTTONDOWN};
         use windows::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture;
 
-        if let Some(window) = app.get_webview_window("floating-window") {
+        if let Some(window) = app.get_webview_window("capsule-window") {
             if let Ok(raw) = window.hwnd() {
                 unsafe {
                     let root = GetAncestor(HWND(raw.0), GA_ROOT);
@@ -2513,7 +2478,7 @@ fn start_floating_drag(app: AppHandle) {
 
 #[tauri::command]
 fn save_floating_position(x: f64, y: f64) -> Result<(), String> {
-    // 浮窗与娱乐胶囊共用同一锚点：统一写入 capsule_position_x/y
+    // 胶囊窗口共用锚点：统一写入 capsule_position_x/y
     let path = get_settings_path();
     let content = fs::read_to_string(&path).unwrap_or_else(|_| "{}".to_string());
     if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&content) {
@@ -2536,13 +2501,13 @@ fn save_floating_position(x: f64, y: f64) -> Result<(), String> {
 
 #[tauri::command]
 fn get_floating_position() -> Option<serde_json::Value> {
-    let (x, y) = get_saved_floating_position()?;
+    let (x, y) = get_saved_capsule_position()?;
     Some(serde_json::json!({ "x": x, "y": y }))
 }
 
 #[tauri::command]
 fn get_entertainment_position() -> Option<serde_json::Value> {
-    let (x, y) = get_saved_entertainment_position()?;
+    let (x, y) = get_saved_capsule_position()?;
     Some(serde_json::json!({ "x": x, "y": y }))
 }
 
@@ -2552,14 +2517,14 @@ fn get_entertainment_position() -> Option<serde_json::Value> {
 fn set_app_mode(mode: String, app: AppHandle, state: State<AppModeState>) -> Result<(), String> {
     let (opacity, snooze_minutes, display_strategy);
     {
-        let mut guard = state.0.lock().unwrap();
+        let mut guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
         guard.mode = mode.clone();
         guard.initialized = true;
         opacity = guard.opacity;
         snooze_minutes = guard.snooze_minutes;
         display_strategy = guard.display_strategy.clone();
     }
-    let _ = app.emit("app-mode-changed", serde_json::json!({
+    emit_or_warn!(app,"app-mode-changed", serde_json::json!({
         "mode": mode,
         "opacity": opacity,
         "snoozeMinutes": snooze_minutes,
@@ -2567,7 +2532,7 @@ fn set_app_mode(mode: String, app: AppHandle, state: State<AppModeState>) -> Res
     }));
 
     // 同步更新浮窗 always_on_top
-    if let Some(window) = app.get_webview_window("floating-window") {
+    if let Some(window) = app.get_webview_window("capsule-window") {
         if mode == "floating" {
             if display_strategy == "on-trigger" {
                 let _ = window.hide();
@@ -2593,12 +2558,12 @@ fn set_app_mode(mode: String, app: AppHandle, state: State<AppModeState>) -> Res
 
 #[tauri::command]
 fn get_app_mode(state: State<AppModeState>) -> String {
-    state.0.lock().unwrap().mode.clone()
+    state.0.lock().unwrap_or_else(|e| e.into_inner()).mode.clone()
 }
 
 #[tauri::command]
 fn get_floating_state(state: State<AppModeState>) -> serde_json::Value {
-    let guard = state.0.lock().unwrap();
+    let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
     serde_json::json!({
         "mode": guard.mode,
         "opacity": guard.opacity,
@@ -2621,7 +2586,7 @@ fn get_floating_state(state: State<AppModeState>) -> serde_json::Value {
 #[tauri::command]
 fn get_current_triggered_task(app: AppHandle) -> Option<serde_json::Value> {
     let ent_state = app.try_state::<EntertainmentModeState>()?;
-    let guard = ent_state.0.lock().unwrap();
+    let guard = ent_state.0.lock().unwrap_or_else(|e| e.into_inner());
     let last_sent = guard.last_sent.as_ref()?;
 
     if last_sent.sent_at.elapsed().as_secs() > guard.mount_recovery_seconds {
@@ -2634,7 +2599,7 @@ fn get_current_triggered_task(app: AppHandle) -> Option<serde_json::Value> {
 /// 拉取娱乐模式窗口配置（透明度 + 延后时长），供 EntertainmentPreview mount 时使用
 #[tauri::command]
 fn get_entertainment_state(state: State<EntertainmentModeState>) -> serde_json::Value {
-    let guard = state.0.lock().unwrap();
+    let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
     serde_json::json!({
         "opacity": guard.opacity,
         "snoozeMinutes": guard.snooze_minutes,
@@ -2644,24 +2609,24 @@ fn get_entertainment_state(state: State<EntertainmentModeState>) -> serde_json::
 /// 拉取娱乐模式激活状态，供前端初始化时同步
 #[tauri::command]
 fn get_entertainment_active(state: State<EntertainmentModeState>) -> bool {
-    state.0.lock().unwrap().is_active
+    state.0.lock().unwrap_or_else(|e| e.into_inner()).is_active
 }
 
-/// 隐藏娱乐模式窗口
+/// 隐藏胶囊窗口
 #[tauri::command]
 fn hide_entertainment_window_cmd(app: AppHandle) {
-    hide_entertainment_window(&app);
+    hide_capsule_window(&app);
 }
 
 /// 启动娱乐窗口原生拖拽
 #[tauri::command]
 fn start_entertainment_drag(app: AppHandle) {
-    if let Some(window) = app.get_webview_window("entertainment-window") {
+    if let Some(window) = app.get_webview_window("capsule-window") {
         let _ = window.start_dragging();
     }
 }
 
-/// 保存娱乐窗口位置（与浮窗共用胶囊锚点）
+/// 保存胶囊窗口位置
 #[tauri::command]
 fn save_entertainment_position(x: f64, y: f64) -> Result<(), String> {
     let path = get_settings_path();
@@ -2680,25 +2645,29 @@ fn save_entertainment_position(x: f64, y: f64) -> Result<(), String> {
 /// 实时更新娱乐窗口透明度
 #[tauri::command]
 fn set_entertainment_opacity(opacity: u64, state: State<EntertainmentModeState>, app: AppHandle) {
-    let mut guard = state.0.lock().unwrap();
+    let mut guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
     guard.opacity = opacity.clamp(0, 100) as u8;
-    let _ = app.emit("entertainment-opacity-changed", guard.opacity);
+    emit_or_warn!(app,"entertainment-opacity-changed", guard.opacity);
 }
 
 /// 实时更新娱乐模式延后时长
 #[tauri::command]
 fn set_entertainment_snooze_minutes(minutes: u64, state: State<EntertainmentModeState>, app: AppHandle) {
-    let mut guard = state.0.lock().unwrap();
+    let mut guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
     guard.snooze_minutes = minutes as u32;
-    let _ = app.emit("entertainment-snooze-changed", guard.snooze_minutes);
+    emit_or_warn!(app,"entertainment-snooze-changed", guard.snooze_minutes);
 }
 
 #[tauri::command]
 fn sync_entertainment_apps(
-    apps: Vec<EntertainmentAppRule>,
+    mut apps: Vec<EntertainmentAppRule>,
     state: State<EntertainmentAppsState>,
 ) -> Result<(), String> {
-    *state.0.lock().unwrap() = apps;
+    // 反序列化后 pattern_lc 为空，需显式填充
+    for rule in &mut apps {
+        rule.fill_pattern_lc();
+    }
+    *state.0.lock().unwrap_or_else(|e| e.into_inner()) = apps;
     Ok(())
 }
 
@@ -2805,7 +2774,7 @@ fn get_foreground_window_info() -> Option<(String, String)> {
 
 fn is_entertainment_foreground(app: &AppHandle) -> bool {
     let rules = match app.try_state::<EntertainmentAppsState>() {
-        Some(state) => state.0.lock().unwrap().clone(),
+        Some(state) => state.0.lock().unwrap_or_else(|e| e.into_inner()).clone(),
         None => return false,
     };
     if rules.is_empty() {
@@ -2816,47 +2785,44 @@ fn is_entertainment_foreground(app: &AppHandle) -> bool {
         None => return false,
     };
     // 排除本程序自身进程：娱乐胶囊/主窗口在前台时不应判定为命中
-    let self_process = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_lowercase()))
-        .unwrap_or_default();
+    // 进程不变，用 OnceLock 缓存避免每秒重算
+    use std::sync::OnceLock;
+    static SELF_PROCESS_LC: OnceLock<String> = OnceLock::new();
+    let self_process_lc = SELF_PROCESS_LC.get_or_init(|| {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_lowercase()))
+            .unwrap_or_default()
+    });
     let process_lc = process.to_lowercase();
-    if !self_process.is_empty() && process_lc == self_process {
+    if !self_process_lc.is_empty() && process_lc == self_process_lc.as_str() {
         return false;
     }
     let title_lc = title.to_lowercase();
     rules.iter().any(|rule| {
-        let mut pattern = rule.pattern.to_lowercase();
-        // 统一去掉 .exe 后缀，避免 UI 存 "netflix.exe" 时静默失效
-        if pattern.ends_with(".exe") {
-            pattern = pattern.trim_end_matches(".exe").to_string();
-        }
+        // pattern_lc 在加载/同步时已填充（lower-case + 去 .exe 后缀）
         if rule.match_type == "process" {
-            process_lc.contains(&pattern)
+            process_lc.contains(&rule.pattern_lc)
         } else {
-            title_lc.contains(&pattern)
+            title_lc.contains(&rule.pattern_lc)
         }
     })
 }
 
-fn sync_floating_visibility(app: &AppHandle, has_triggered_tasks: bool) {
+fn sync_capsule_visibility(app: &AppHandle, has_triggered_tasks: bool) {
     // 翻页器可见性策略：动画由 timer 循环切换点触发。此处仅做兜底隐藏。
     let entertainment_active = app.try_state::<EntertainmentModeState>()
-        .map(|s| s.0.lock().unwrap().is_active)
+        .map(|s| s.0.lock().unwrap_or_else(|e| e.into_inner()).is_active)
         .unwrap_or(false);
     if entertainment_active {
-        if let Some(window) = app.get_webview_window("floating-window") {
-            if window.is_visible().unwrap_or(false) {
-                let _ = window.hide();
-            }
-        }
+        // 娱乐激活时胶囊窗口由前端处理内容切换，不在此控制
         return;
     }
 
     let mode_state = app.state::<AppModeState>();
     let (current_mode, display_strategy);
     {
-        let guard = mode_state.0.lock().unwrap();
+        let guard = mode_state.0.lock().unwrap_or_else(|e| e.into_inner());
         current_mode = guard.mode.clone();
         display_strategy = guard.display_strategy.clone();
     }
@@ -2865,10 +2831,10 @@ fn sync_floating_visibility(app: &AppHandle, has_triggered_tasks: bool) {
         return;
     }
 
-    if let Some(_window) = app.get_webview_window("floating-window") {
+    if let Some(_window) = app.get_webview_window("capsule-window") {
         if display_strategy == "on-trigger" {
             if has_triggered_tasks {
-                let _ = show_floating_window_now(app);
+                let _ = show_capsule_window(app);
             } else {
                 let _ = _window.hide();
                 let _ = _window.set_always_on_top(false);
@@ -2876,7 +2842,7 @@ fn sync_floating_visibility(app: &AppHandle, has_triggered_tasks: bool) {
         } else {
             let _ = _window.set_always_on_top(true);
             if !_window.is_visible().unwrap_or(false) {
-                let _ = show_floating_window_now(app);
+                let _ = show_capsule_window(app);
             }
         }
     }
@@ -2885,7 +2851,7 @@ fn sync_floating_visibility(app: &AppHandle, has_triggered_tasks: bool) {
 fn apply_settings_to_state(app: &AppHandle, settings_json: &str) {
     if let Ok(json) = serde_json::from_str::<serde_json::Value>(settings_json) {
         if let Some(mode_state) = app.try_state::<AppModeState>() {
-            let mut guard = mode_state.0.lock().unwrap();
+            let mut guard = mode_state.0.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(mode) = json.get("appMode").and_then(|v| v.as_str()) {
                 guard.mode = mode.to_string();
             }
@@ -2911,7 +2877,7 @@ fn apply_settings_to_state(app: &AppHandle, settings_json: &str) {
         }
         // 娱乐模式相关字段写入独立的 EntertainmentModeState
         if let Some(ent_state) = app.try_state::<EntertainmentModeState>() {
-            let mut guard = ent_state.0.lock().unwrap();
+            let mut guard = ent_state.0.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(enabled) = json.get("entertainmentModeEnabled").and_then(|v| v.as_bool()) {
                 guard.enabled = enabled;
             }
@@ -2940,11 +2906,15 @@ fn apply_settings_to_state(app: &AppHandle, settings_json: &str) {
         }
         if let Some(apps_state) = app.try_state::<EntertainmentAppsState>() {
             if let Some(apps) = json.get("entertainmentApps").and_then(|v| v.as_array()) {
-                let parsed: Vec<EntertainmentAppRule> = apps
+                let mut parsed: Vec<EntertainmentAppRule> = apps
                     .iter()
                     .filter_map(|v| serde_json::from_value(v.clone()).ok())
                     .collect();
-                *apps_state.0.lock().unwrap() = parsed;
+                // 反序列化后 pattern_lc 为空，需显式填充
+                for rule in &mut parsed {
+                    rule.fill_pattern_lc();
+                }
+                *apps_state.0.lock().unwrap_or_else(|e| e.into_inner()) = parsed;
             }
         }
     }
@@ -2952,15 +2922,15 @@ fn apply_settings_to_state(app: &AppHandle, settings_json: &str) {
 
 #[tauri::command]
 fn update_tray_tooltip(state: State<TrayState>, tooltip: String) {
-    if let Some(tray) = state.0.lock().unwrap().as_ref() {
+    if let Some(tray) = state.0.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
         let _ = tray.set_tooltip(Some(&tooltip));
     }
 }
 
 #[tauri::command]
 fn update_pause_menu(state: State<PauseMenuState>, lang_state: State<LanguageState>, paused: bool) {
-    if let Some(menu_item) = state.0.lock().unwrap().as_ref() {
-        let lang = lang_state.0.lock().unwrap();
+    if let Some(menu_item) = state.0.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        let lang = lang_state.0.lock().unwrap_or_else(|e| e.into_inner());
         let text = if paused {
             get_tray_text("resume", &lang)
         } else {
@@ -2973,14 +2943,14 @@ fn update_pause_menu(state: State<PauseMenuState>, lang_state: State<LanguageSta
 #[tauri::command]
 fn update_tray_language(app: AppHandle, lang_state: State<LanguageState>, language: String) {
     // 更新语言状态
-    *lang_state.0.lock().unwrap() = language.clone();
+    *lang_state.0.lock().unwrap_or_else(|e| e.into_inner()) = language.clone();
 
     // 重新构建托盘菜单以应用新语言
     rebuild_tray_menu(&app);
 
     // 更新托盘提示文本
     let tray_state = app.state::<TrayState>();
-    let guard = tray_state.0.lock().unwrap();
+    let guard = tray_state.0.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(tray) = guard.as_ref() {
         let _ = tray.set_tooltip(Some(get_tray_text("tooltip", &language)));
     }
@@ -3046,14 +3016,11 @@ async fn enter_lock_mode(app: tauri::AppHandle, state: State<'_, LockState>, tas
         .get_webview_window("main")
         .ok_or_else(|| "main window not found".to_string())?;
 
-    if let Some(floating_window) = app.get_webview_window("floating-window") {
-        let _ = floating_window.hide();
-    }
-    // 进入锁屏时也隐藏娱乐模式窗口
+    // 进入锁屏时隐藏胶囊窗口
     // 注：娱乐模式与 appMode 互斥，enter_lock_mode 实际不会在娱乐激活时被调用
     // （task-notification 在 !entertainment_active 分发块内才 emit）。
     // Win+L 系统锁屏路径的娱乐状态清理见 timer_set_system_locked。
-    hide_entertainment_window(&app);
+    hide_capsule_window(&app);
 
     let monitors = window.available_monitors().unwrap_or_default();
     // 主显示器：完整锁屏；副显示器：仅显示提示
@@ -3072,7 +3039,7 @@ async fn enter_lock_mode(app: tauri::AppHandle, state: State<'_, LockState>, tas
         }
     }
     
-    let mut state_guard = state.0.lock().unwrap();
+    let mut state_guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
     state_guard.windows.extend(created_windows);
     state_guard.args = task;
 
@@ -3081,7 +3048,7 @@ async fn enter_lock_mode(app: tauri::AppHandle, state: State<'_, LockState>, tas
 
 #[tauri::command]
 fn exit_lock_mode(app: tauri::AppHandle, state: State<LockState>) {
-    let mut state_guard = state.0.lock().unwrap();
+    let mut state_guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
     for label in state_guard.windows.iter() {
         if let Some(w) = app.get_webview_window(label) {
             let _ = w.close();
@@ -3210,12 +3177,12 @@ pub fn run() {
                             let _ = window.set_focus();
                         }
                     } else if id_str == "reset" {
-                        let _ = app.emit("reset-all-tasks", ());
+                        emit_or_warn!(app,"reset-all-tasks", ());
                     } else if id_str == "pause" {
-                        let _ = app.emit("toggle-pause", ());
+                        emit_or_warn!(app,"toggle-pause", ());
                     } else if id_str.starts_with("reset_task_") {
                         let task_id = id_str.trim_start_matches("reset_task_");
-                        let mut state = get_timer_state().lock().unwrap();
+                        let mut state = get_timer_state().lock().unwrap_or_else(|e| e.into_inner());
                         let now = Instant::now();
                         let was_triggered = if let Some(timer) = state.tasks.get_mut(task_id) {
                             let was = timer.triggered;
@@ -3230,7 +3197,7 @@ pub fn run() {
                         };
                         drop(state);
                         if was_triggered {
-                            let _ = app.emit("floating-task-cleared", serde_json::json!({ "taskId": task_id }));
+                            emit_or_warn!(app,"floating-task-cleared", serde_json::json!({ "taskId": task_id }));
                         }
                     }
                 })
@@ -3245,14 +3212,14 @@ pub fn run() {
                             let _ = window.unminimize();
                             let _ = window.show();
                             let _ = window.set_focus();
-                            let _ = app.emit("app-restored", ());
+                            emit_or_warn!(app,"app-restored", ());
                         }
                     }
                 })
                 .build(app)?;
             
-            *app.state::<TrayState>().0.lock().unwrap() = Some(tray);
-            *app.state::<PauseMenuState>().0.lock().unwrap() = Some(pause);
+            *app.state::<TrayState>().0.lock().unwrap_or_else(|e| e.into_inner()) = Some(tray);
+            *app.state::<PauseMenuState>().0.lock().unwrap_or_else(|e| e.into_inner()) = Some(pause);
 
             // 加载设置并同步到后端状态
             let settings_json = load_settings();
@@ -3261,13 +3228,13 @@ pub fn run() {
             // 启动时把当前模式广播给前端，确保前端与后端状态一致
             {
                 let mode_state = app.state::<AppModeState>();
-                let guard = mode_state.0.lock().unwrap();
+                let guard = mode_state.0.lock().unwrap_or_else(|e| e.into_inner());
                 let mode = guard.mode.clone();
                 let opacity = guard.opacity;
                 let snooze_minutes = guard.snooze_minutes;
                 let display_strategy = guard.display_strategy.clone();
                 drop(guard);
-                let _ = app.emit("app-mode-changed", serde_json::json!({
+                emit_or_warn!(app,"app-mode-changed", serde_json::json!({
                     "mode": mode,
                     "opacity": opacity,
                     "snoozeMinutes": snooze_minutes,
@@ -3278,10 +3245,10 @@ pub fn run() {
             // 监听浮窗任务关闭事件："on-trigger" 策略下关闭后隐藏窗口并取消置顶
             let app_handle = app.handle().clone();
             app.listen("floating-task-dismissed", move |_| {
-                if let Some(window) = app_handle.get_webview_window("floating-window") {
+                if let Some(window) = app_handle.get_webview_window("capsule-window") {
                     let strategy = app_handle
                         .try_state::<AppModeState>()
-                        .map(|s| s.0.lock().unwrap().display_strategy.clone())
+                        .map(|s| s.0.lock().unwrap_or_else(|e| e.into_inner()).display_strategy.clone())
                         .unwrap_or_default();
                     if strategy == "on-trigger" {
                         let _ = window.hide();
@@ -3304,7 +3271,7 @@ pub fn run() {
                     return;
                 }
                 if let Some(ent_state) = app_handle.try_state::<EntertainmentModeState>() {
-                    let mut guard = ent_state.0.lock().unwrap();
+                    let mut guard = ent_state.0.lock().unwrap_or_else(|e| e.into_inner());
                     guard.last_reminder_at = Some(Instant::now());
                     guard.last_sent = None;
                 }
@@ -3314,11 +3281,11 @@ pub fn run() {
             {
                 let app_handle = app.handle().clone();
                 let mode_state = app.state::<AppModeState>();
-                let mode = mode_state.0.lock().unwrap().mode.clone();
+                let mode = mode_state.0.lock().unwrap_or_else(|e| e.into_inner()).mode.clone();
                 if mode == "floating" {
                     std::thread::spawn(move || {
-                        // 创建浮窗并显示，让 WebView2 完成初始化
-                        if let Ok(window) = ensure_floating_window(&app_handle, false) {
+                        // 创建胶囊窗口并显示，让 WebView2 完成初始化
+                        if let Ok(window) = ensure_capsule_window(&app_handle, false) {
                             // 先置顶再显示，避免窗口短暂出现在其他窗口后面
                             let _ = window.set_always_on_top(true);
                             let _ = window.show();
@@ -3326,7 +3293,7 @@ pub fn run() {
                             // 根据策略决定是否隐藏
                             let strategy = app_handle
                                 .try_state::<AppModeState>()
-                                .map(|s| s.0.lock().unwrap().display_strategy.clone())
+                                .map(|s| s.0.lock().unwrap_or_else(|e| e.into_inner()).display_strategy.clone())
                                 .unwrap_or_default();
                             if strategy != "always" {
                                 let _ = window.hide();
@@ -3338,7 +3305,7 @@ pub fn run() {
             }
 
             // 启动时预创建娱乐模式窗口（若开关已启用），避免首次触发时 WebView2 冷启动延迟
-            // 注：预创建已被移除，窗口由 show_entertainment_window_now 按需创建
+            // 注：预创建已被移除，窗口由 show_capsule_window 按需创建
 
             // 启动后端定时器线程
             start_timer_thread(app.handle().clone());
@@ -3362,4 +3329,432 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|_app_handle, _event| {
         });
+}
+
+// =============================================================================
+// 单元测试
+// =============================================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    /// 构造 interval 类型 TaskConfig
+    fn mk_interval_config(id: &str, interval_minutes: u64) -> TaskConfig {
+        TaskConfig {
+            id: id.to_string(),
+            title: format!("Task {}", id),
+            desc: String::new(),
+            interval: interval_minutes,
+            enabled: true,
+            icon: "default".to_string(),
+            auto_reset_on_idle: false,
+            schedule_type: "interval".to_string(),
+            daily_time: None,
+            debug_interval_seconds: 0,
+            lock_duration: 0,
+            pre_notification_seconds: 0,
+            snooze_minutes: 0,
+            is_exercise_task: false,
+            exercise_package_id: None,
+            exercise_ids: None,
+        }
+    }
+
+    /// 构造 daily 类型 TaskConfig
+    fn mk_daily_config(id: &str, daily_time: &str) -> TaskConfig {
+        TaskConfig {
+            id: id.to_string(),
+            title: format!("Daily {}", id),
+            desc: String::new(),
+            interval: 0,
+            enabled: true,
+            icon: "default".to_string(),
+            auto_reset_on_idle: false,
+            schedule_type: "daily".to_string(),
+            daily_time: Some(daily_time.to_string()),
+            debug_interval_seconds: 0,
+            lock_duration: 0,
+            pre_notification_seconds: 0,
+            snooze_minutes: 0,
+            is_exercise_task: false,
+            exercise_package_id: None,
+            exercise_ids: None,
+        }
+    }
+
+    /// 构造 TaskTimer（reset_time=now, triggered=false, snoozed=false）
+    fn mk_timer(config: TaskConfig) -> TaskTimer {
+        TaskTimer {
+            config,
+            reset_time: Instant::now(),
+            triggered: false,
+            disabled_at: None,
+            snoozed: false,
+            snooze_count: 0,
+            daily_last_trigger_key: None,
+        }
+    }
+
+    fn mk_payload(id: &str) -> TaskTriggeredPayload {
+        TaskTriggeredPayload {
+            id: id.to_string(),
+            title: String::new(),
+            desc: String::new(),
+            icon: String::new(),
+        }
+    }
+
+    // ───── is_daily_task ─────
+    #[test]
+    fn is_daily_task_true() {
+        let cfg = mk_daily_config("d1", "10:00");
+        assert!(is_daily_task(&cfg));
+    }
+
+    #[test]
+    fn is_daily_task_false_when_interval() {
+        let cfg = mk_interval_config("i1", 30);
+        assert!(!is_daily_task(&cfg));
+    }
+
+    #[test]
+    fn is_daily_task_false_when_no_time() {
+        let mut cfg = mk_daily_config("d1", "10:00");
+        cfg.daily_time = None;
+        assert!(!is_daily_task(&cfg));
+    }
+
+    // ───── compute_total_secs ─────
+    #[test]
+    fn compute_total_secs_debug_takes_priority() {
+        let mut cfg = mk_interval_config("i1", 10);
+        cfg.debug_interval_seconds = 42;
+        let timer = mk_timer(cfg);
+        assert_eq!(compute_total_secs(&timer), 42);
+    }
+
+    #[test]
+    fn compute_total_secs_daily_returns_86400() {
+        let cfg = mk_daily_config("d1", "10:00");
+        let timer = mk_timer(cfg);
+        assert_eq!(compute_total_secs(&timer), 86400);
+    }
+
+    #[test]
+    fn compute_total_secs_interval_returns_minutes_x_60() {
+        let cfg = mk_interval_config("i1", 10);
+        let timer = mk_timer(cfg);
+        assert_eq!(compute_total_secs(&timer), 600);
+    }
+
+    #[test]
+    fn compute_total_secs_zero_interval() {
+        let cfg = mk_interval_config("i1", 0);
+        let timer = mk_timer(cfg);
+        assert_eq!(compute_total_secs(&timer), 0);
+    }
+
+    // 注：compute_total_secs 在极端 interval（如 u64::MAX/30）下 *60 会溢出。
+    // 当前实现 debug 模式 panic / release 模式 wrap，无法用 should_panic 可靠标记。
+    // 阶段 3 修复为 saturating_mul 后再加溢出用例。
+
+    // ───── parse_daily_time ─────
+    #[test]
+    fn parse_daily_time_valid() {
+        assert_eq!(parse_daily_time("10:30"), Some((10, 30)));
+        assert_eq!(parse_daily_time("00:00"), Some((0, 0)));
+        assert_eq!(parse_daily_time("23:59"), Some((23, 59)));
+    }
+
+    #[test]
+    fn parse_daily_time_trims_whitespace() {
+        assert_eq!(parse_daily_time("  10:30  "), Some((10, 30)));
+    }
+
+    #[test]
+    fn parse_daily_time_rejects_hour_out_of_range() {
+        assert_eq!(parse_daily_time("24:00"), None);
+        assert_eq!(parse_daily_time("99:00"), None);
+    }
+
+    #[test]
+    fn parse_daily_time_rejects_minute_out_of_range() {
+        assert_eq!(parse_daily_time("10:60"), None);
+        assert_eq!(parse_daily_time("10:99"), None);
+    }
+
+    #[test]
+    fn parse_daily_time_rejects_missing_minute() {
+        assert_eq!(parse_daily_time("10"), None);
+    }
+
+    #[test]
+    fn parse_daily_time_rejects_extra_segments() {
+        assert_eq!(parse_daily_time("10:30:45"), None);
+    }
+
+    #[test]
+    fn parse_daily_time_rejects_empty_and_garbage() {
+        assert_eq!(parse_daily_time(""), None);
+        assert_eq!(parse_daily_time("abc"), None);
+        assert_eq!(parse_daily_time("ab:cd"), None);
+    }
+
+    // ───── current_daily_trigger_key ─────
+    #[test]
+    fn current_daily_trigger_key_none_for_interval_task() {
+        let cfg = mk_interval_config("i1", 30);
+        assert!(current_daily_trigger_key(&cfg).is_none());
+    }
+
+    #[test]
+    fn current_daily_trigger_key_none_for_daily_without_time() {
+        let mut cfg = mk_daily_config("d1", "10:00");
+        cfg.daily_time = None;
+        assert!(current_daily_trigger_key(&cfg).is_none());
+    }
+
+    #[test]
+    fn current_daily_trigger_key_none_for_invalid_time() {
+        let cfg = mk_daily_config("d1", "99:99");
+        assert!(current_daily_trigger_key(&cfg).is_none());
+    }
+
+    // 注：daily_remaining_seconds 与 current_daily_trigger_key 依赖 Local::now()，
+    // 无法做精确断言。仅验证 None / Invalid 路径。
+
+    #[test]
+    fn daily_remaining_seconds_none_returns_86400() {
+        let mut cfg = mk_daily_config("d1", "10:00");
+        cfg.daily_time = None;
+        assert_eq!(daily_remaining_seconds(&cfg), 86400);
+    }
+
+    #[test]
+    fn daily_remaining_seconds_invalid_returns_86400() {
+        let cfg = mk_daily_config("d1", "99:99");
+        assert_eq!(daily_remaining_seconds(&cfg), 86400);
+    }
+
+    // ───── sort_triggers ─────
+    #[test]
+    fn sort_triggers_by_remaining_then_id() {
+        let mut vec = vec![
+            (mk_payload("b"), 10),
+            (mk_payload("a"), 5),
+            (mk_payload("c"), 5),
+        ];
+        sort_triggers(&mut vec);
+        // remaining=5 优先（a, c），id 升序；remaining=10 在后
+        assert_eq!(vec[0].0.id, "a");
+        assert_eq!(vec[1].0.id, "c");
+        assert_eq!(vec[2].0.id, "b");
+    }
+
+    #[test]
+    fn sort_triggers_empty() {
+        let mut vec: Vec<(TaskTriggeredPayload, u64)> = vec![];
+        sort_triggers(&mut vec);
+        assert!(vec.is_empty());
+    }
+
+    #[test]
+    fn sort_triggers_single() {
+        let mut vec = vec![(mk_payload("x"), 0)];
+        sort_triggers(&mut vec);
+        assert_eq!(vec.len(), 1);
+        assert_eq!(vec[0].0.id, "x");
+    }
+
+    #[test]
+    fn sort_triggers_all_zero_remaining_sorts_by_id() {
+        let mut vec = vec![
+            (mk_payload("z"), 0),
+            (mk_payload("y"), 0),
+            (mk_payload("x"), 0),
+        ];
+        sort_triggers(&mut vec);
+        assert_eq!(vec[0].0.id, "x");
+        assert_eq!(vec[1].0.id, "y");
+        assert_eq!(vec[2].0.id, "z");
+    }
+
+    // ───── TimerState::compensate_after_freeze ─────
+    #[test]
+    fn compensate_lock_screen_clears_triggered() {
+        let mut state = TimerState::new();
+        let cfg = mk_interval_config("t1", 30);
+        let mut timer = mk_timer(cfg);
+        timer.triggered = true;
+        state.tasks.insert("t1".to_string(), timer);
+
+        let freeze_start = Instant::now() - Duration::from_secs(60);
+        let cleared = state.compensate_after_freeze(freeze_start, FreezeReason::LockScreenActive);
+
+        assert_eq!(cleared, vec!["t1".to_string()]);
+        assert!(!state.tasks.get("t1").unwrap().triggered);
+        assert!(!state.tasks.get("t1").unwrap().snoozed);
+        assert_eq!(state.tasks.get("t1").unwrap().snooze_count, 0);
+    }
+
+    #[test]
+    fn compensate_lock_screen_skips_snoozed() {
+        let mut state = TimerState::new();
+        let cfg = mk_interval_config("t1", 30);
+        let mut timer = mk_timer(cfg);
+        timer.snoozed = true;
+        timer.snooze_count = 2;
+        state.tasks.insert("t1".to_string(), timer);
+
+        let freeze_start = Instant::now() - Duration::from_secs(60);
+        let cleared = state.compensate_after_freeze(freeze_start, FreezeReason::LockScreenActive);
+
+        // snoozed 任务不补偿，不应被清
+        assert!(cleared.is_empty());
+        assert!(state.tasks.get("t1").unwrap().snoozed);
+        assert_eq!(state.tasks.get("t1").unwrap().snooze_count, 2);
+    }
+
+    #[test]
+    fn compensate_lock_screen_skips_reset_after_freeze_start() {
+        let mut state = TimerState::new();
+        let cfg = mk_interval_config("t1", 30);
+        let mut timer = mk_timer(cfg);
+        // 冻结期间被重置过：reset_time > freeze_start
+        timer.reset_time = Instant::now();
+        state.tasks.insert("t1".to_string(), timer);
+
+        let freeze_start = Instant::now() - Duration::from_secs(60);
+        let cleared = state.compensate_after_freeze(freeze_start, FreezeReason::LockScreenActive);
+
+        assert!(cleared.is_empty());
+    }
+
+    #[test]
+    fn compensate_watchdog_clears_triggered() {
+        let mut state = TimerState::new();
+        let cfg = mk_interval_config("t1", 30);
+        let mut timer = mk_timer(cfg);
+        timer.triggered = true;
+        state.tasks.insert("t1".to_string(), timer);
+
+        let freeze_start = Instant::now() - Duration::from_secs(60);
+        let cleared = state.compensate_after_freeze(freeze_start, FreezeReason::Watchdog);
+
+        assert_eq!(cleared, vec!["t1".to_string()]);
+        assert!(!state.tasks.get("t1").unwrap().triggered);
+    }
+
+    #[test]
+    fn compensate_system_locked_auto_reset_clears_triggered() {
+        let mut state = TimerState::new();
+        let mut cfg = mk_interval_config("t1", 30);
+        cfg.auto_reset_on_idle = true;
+        let mut timer = mk_timer(cfg);
+        timer.triggered = true;
+        timer.snoozed = true;
+        timer.snooze_count = 3;
+        state.tasks.insert("t1".to_string(), timer);
+
+        let freeze_start = Instant::now() - Duration::from_secs(60);
+        let cleared = state.compensate_after_freeze(freeze_start, FreezeReason::SystemLocked);
+
+        // auto_reset 任务在 SystemLocked 下被重置，但不在 cleared 列表（无 triggered 信号需要通知）
+        // 实际看代码：SystemLocked 路径只 push cleared 在 LockScreenActive/Watchdog 路径，
+        // SystemLocked 路径不 push cleared。验证 cleared 为空。
+        assert!(cleared.is_empty());
+        let t = state.tasks.get("t1").unwrap();
+        assert!(!t.triggered);
+        assert!(!t.snoozed);
+        assert_eq!(t.snooze_count, 0);
+    }
+
+    #[test]
+    fn compensate_paused_shifts_reset_time() {
+        let mut state = TimerState::new();
+        let cfg = mk_interval_config("t1", 30);
+        let mut timer = mk_timer(cfg);
+        let original_reset = Instant::now() - Duration::from_secs(120);
+        timer.reset_time = original_reset;
+        state.tasks.insert("t1".to_string(), timer);
+
+        let freeze_start = Instant::now() - Duration::from_secs(60);
+        let cleared = state.compensate_after_freeze(freeze_start, FreezeReason::Paused);
+
+        // Paused 路径：reset_time += freeze_duration（后移约 60s），cleared 为空
+        assert!(cleared.is_empty());
+        let t = state.tasks.get("t1").unwrap();
+        // reset_time 应后移约 60s
+        let shift = t.reset_time.duration_since(original_reset);
+        assert!(shift.as_secs() >= 60 && shift.as_secs() <= 65,
+            "expected shift ~60s, got {:?}", shift);
+    }
+
+    #[test]
+    fn compensate_paused_skips_reset_after_freeze_start() {
+        let mut state = TimerState::new();
+        let cfg = mk_interval_config("t1", 30);
+        let mut timer = mk_timer(cfg);
+        // reset_time 在 freeze_start 之后
+        timer.reset_time = Instant::now() + Duration::from_secs(10);
+        let original_reset = timer.reset_time;
+        state.tasks.insert("t1".to_string(), timer);
+
+        let freeze_start = Instant::now() - Duration::from_secs(60);
+        let cleared = state.compensate_after_freeze(freeze_start, FreezeReason::Paused);
+
+        assert!(cleared.is_empty());
+        // reset_time 不变
+        assert_eq!(state.tasks.get("t1").unwrap().reset_time, original_reset);
+    }
+
+    #[test]
+    fn compensate_lock_screen_handles_disabled_at() {
+        let mut state = TimerState::new();
+        let cfg = mk_interval_config("t1", 30);
+        let mut timer = mk_timer(cfg);
+        // reset_time 必须早于 freeze_start 才能走到平移分支
+        let original_reset = Instant::now() - Duration::from_secs(120);
+        let original_disabled = Instant::now() - Duration::from_secs(120);
+        timer.reset_time = original_reset;
+        timer.disabled_at = Some(original_disabled);
+        state.tasks.insert("t1".to_string(), timer);
+
+        let freeze_start = Instant::now() - Duration::from_secs(60);
+        let _ = state.compensate_after_freeze(freeze_start, FreezeReason::LockScreenActive);
+
+        let t = state.tasks.get("t1").unwrap();
+        // disabled_at 应后移约 60s（与 reset_time 同方向）
+        let shift = t.disabled_at.unwrap().duration_since(original_disabled);
+        assert!(shift.as_secs() >= 60 && shift.as_secs() <= 65,
+            "expected disabled_at shift ~60s, got {:?}", shift);
+    }
+
+    #[test]
+    fn timer_state_is_frozen_initially_false() {
+        let state = TimerState::new();
+        assert!(!state.is_frozen());
+    }
+
+    #[test]
+    fn timer_state_is_frozen_when_paused() {
+        let mut state = TimerState::new();
+        state.paused = true;
+        assert!(state.is_frozen());
+    }
+
+    #[test]
+    fn timer_state_is_frozen_when_system_locked() {
+        let mut state = TimerState::new();
+        state.system_locked = true;
+        assert!(state.is_frozen());
+    }
+
+    #[test]
+    fn timer_state_is_frozen_when_lock_screen_active() {
+        let mut state = TimerState::new();
+        state.lock_screen_active = true;
+        assert!(state.is_frozen());
+    }
 }

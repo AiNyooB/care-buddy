@@ -11,7 +11,7 @@
 | 项目 | 说明 |
 |------|------|
 | 名称 | CareBuddy |
-| 版本 | Rust 后端 `1.7.0` / 前端常量 `VERSION = '1.8.0'`（存在不一致，待同步） |
+| 版本 | `1.7.0`（前后端统一） |
 | 应用标识 | `com.carebuddy.app` |
 | 主窗口尺寸 | 492 × 696，无边框（`decorations: false`），不可调整大小 |
 | 主要功能 | 久坐/喝水/护眼提醒、全屏锁屏、引导锻炼、悬浮预通知窗、娱乐模式覆盖、数据统计 |
@@ -72,7 +72,7 @@ care-buddy/
 │   ├── types/                   # TypeScript 类型定义（index + exercise）
 │   └── utils/                   # time / audio / storage / exercise / statsRecorder / recommend
 ├── src-tauri/                   # Rust 后端源码
-│   ├── src/lib.rs               # 核心逻辑（1500+ 行：timer / idle / lock / tray / entertainment）
+│   ├── src/lib.rs               # 核心逻辑（3700+ 行：timer / idle / lock / tray / entertainment + #[cfg(test)] 模块）
 │   ├── src/main.rs              # 入口：调用 care_buddy_lib::run()
 │   ├── capabilities/main.json   # Tauri 权限配置（4 类窗口共用）
 │   ├── Cargo.toml               # Rust 依赖
@@ -1138,14 +1138,11 @@ sequenceDiagram
 
 | 项 | 当前值 | 备注 |
 |----|--------|------|
-| `package.json` version | `1.7.0` | 待同步 |
-| `src-tauri/Cargo.toml` version | `1.7.0` | 待同步 |
-| `src-tauri/tauri.conf.json` version | `1.7.0` | 待同步 |
-| `src/constants/index.ts` VERSION | `'1.8.0'` | 前端常量已升 |
+| `package.json` / `Cargo.toml` / `tauri.conf.json` version | `1.7.0` | 已统一 |
 | `tsconfig.json` noUnusedLocals/Parameters | `false` | 关闭未使用警告 |
 | `components.json` tailwind config 指向 | `tailwind.config.js` | 项目实际用 Tailwind 4 CSS-first，此引用为 shadcn CLI 兼容字段 |
-| CI typecheck | 未运行 | 本地需自觉执行 `npm run typecheck` |
 | `utils/index.ts` barrel 导出 | 不含 `exercise` / `recommend` | 需直接 import 子文件 |
+| 测试基建 | 前端 Vitest 67 测试 + Rust cargo test 35 测试 | `src/utils/{time,exercise,storage,statsRecorder}.test.ts` + `lib.rs` 末尾 `#[cfg(test)] mod tests`，CI 已接入 typecheck/test/cargo test |
 
 ---
 

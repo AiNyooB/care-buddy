@@ -77,12 +77,13 @@ function useEntranceAnimation() {
 
   useEffect(() => {
     const start = performance.now();
-    const duration = 500;
+    const duration = 350;
+    const freq = 3.2;
+    const decay = 18.0;
     let raf: number;
     const animate = (now: number) => {
       const t = Math.min((now - start) / duration, 1);
-      // Spring-ish easing: cubic bezier approximation
-      const s = 1 - Math.cos(2 * Math.PI * 2.0 * t) * Math.exp(-10.5 * t);
+      const s = 1 - Math.cos(2 * Math.PI * freq * t) * Math.exp(-decay * t);
       setScale(0.85 + (1 - 0.85) * Math.min(1, t * 2.5));
       setOpacity(Math.min(1, t * 4));
       if (t < 1) raf = requestAnimationFrame(animate);
@@ -136,29 +137,9 @@ export function FloatingPreview() {
     timerReopenTriggered().catch(console.warn);
   }, []);
 
-  // 挂载时恢复保存的浮窗位置
-  useEffect(() => {
-    getFloatingPosition().then((pos) => {
-      if (pos) {
-        getCurrentWebviewWindow().setPosition(new PhysicalPosition(pos.x, pos.y)).catch(() => {});
-      }
-    }).catch(() => {});
-  }, []);
+  // 挂载时恢复保存的浮窗位置（已由 Rust ensure_capsule_window 创建时设定，前端不再覆盖）
 
-  // 浮窗模式下设置 html/body 透明背景，防止 WebView2 默认白色背景露出
-  useEffect(() => {
-    document.documentElement.classList.add('floating-mode');
-    document.documentElement.style.backgroundColor = 'transparent';
-    document.body.style.backgroundColor = 'transparent';
-    document.body.style.background = 'transparent';
-
-    return () => {
-      document.documentElement.classList.remove('floating-mode');
-      document.documentElement.style.backgroundColor = '';
-      document.body.style.backgroundColor = '';
-      document.body.style.background = '';
-    };
-  }, []);
+  // 浮窗模式下设置 html/body 透明背景（已由 CapsuleShell 管理，此组件保留占位）
 
   useEffect(() => {
     let cleanupPreview: (() => void) | null = null;
@@ -169,10 +150,11 @@ export function FloatingPreview() {
     let cleanupIdle: (() => void) | null = null;
 
     listen<PreviewPayload>('floating-preview-update', (event) => {
-      setPreview(event.payload);
+      // 已进入触发态时不接受 preview 更新，避免覆写 triggered 内容
       if (phaseRef.current === 'triggered' || dismissingRef.current) {
         return;
       }
+      setPreview(event.payload);
       phaseRef.current = 'preview';
       setPhase('preview');
     }).then((f) => { cleanupPreview = f; });
@@ -387,15 +369,16 @@ export function FloatingPreview() {
           transform: `scale(${scale})`,
         }}
       >
-        <div className="relative h-full w-full overflow-hidden rounded-full bg-black [contain:strict]"
+        <div className="relative h-full w-full overflow-hidden rounded-full bg-black/80 [contain:layout]"
           data-draggable
           style={{
             boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06)',
           }}>
           {phase === 'triggered' && (
             <BorderBeam
-              size={120}
-              duration={8}
+              size={80}
+              duration={6}
+              borderWidth={1.5}
               className="from-transparent via-blue-500 to-transparent"
             />
           )}

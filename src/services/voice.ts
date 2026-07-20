@@ -43,7 +43,11 @@ export async function primeSpeech(): Promise<void> {
     warmup.volume = 0;
     speechSynthesis.speak(warmup);
     primed = true;
-  } catch { /* ignore */ }
+  } catch (e) {
+    console.warn('[voice] primeSpeech failed, will retry on next speak:', e);
+    // 重置 voicesReady 以便下次 primeSpeech/speak 能重新尝试加载语音
+    voicesReady = null;
+  }
 }
 
 /**
@@ -79,4 +83,16 @@ export function stopSpeaking(): void {
  */
 export function isSpeechSupported(): boolean {
   return 'speechSynthesis' in window;
+}
+
+// HMR 防护：模块替换时清理语音状态，避免 primed/voicesReady 残留导致后续 speak 不工作
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    currentUtterance = null;
+    primed = false;
+    voicesReady = null;
+    if ('speechSynthesis' in window) {
+      try { speechSynthesis.cancel(); } catch { /* ignore */ }
+    }
+  });
 }

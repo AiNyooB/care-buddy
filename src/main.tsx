@@ -10,6 +10,7 @@ const App = React.lazy(() => import('./App'));
 const LockScreenSlave = React.lazy(() => import('./components/LockScreenSlave').then(m => ({ default: m.LockScreenSlave })));
 const FloatingPreview = React.lazy(() => import('./components/FloatingPreview').then(m => ({ default: m.FloatingPreview })));
 const EntertainmentPreview = React.lazy(() => import('./components/EntertainmentPreview').then(m => ({ default: m.EntertainmentPreview })));
+const CapsuleShell = React.lazy(() => import('./components/CapsuleShell').then(m => ({ default: m.CapsuleShell })));
 
 // 中文语言包
 const zhCN = {
@@ -743,6 +744,8 @@ const mode = params.get('mode');
 let RootComponent: React.ReactNode;
 if (mode === 'lock_slave') {
   RootComponent = <LockScreenSlave />;
+} else if (mode === 'capsule') {
+  RootComponent = <CapsuleShell />;
 } else if (mode === 'floating') {
   RootComponent = <FloatingPreview />;
 } else if (mode === 'entertainment') {

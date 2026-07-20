@@ -92,13 +92,13 @@ export function useCountdownSync() {
 
       // 浮窗模式下常驻显示最近一条提醒；其它模式下只在预通知窗口内显示
       const candidateTasks = currentTasks.filter((task) => {
-        const remaining = countdowns[task.id]?.remaining;
+        const info = countdowns[task.id];
+        const remaining = info?.remaining;
         if (remaining === undefined) return false;
         if (!task.enabled) return false;
         if (isFloating) {
-          // 浮窗模式：排除剩余=0的任务（已触发，由 floating-task-triggered 处理）
-          // 但包含预通知窗口内的任务（用于显示"即将提醒"）
-          if (remaining <= 0) return false;
+          // 浮窗模式：保留已触发的任务（triggered=true），不依赖 floating-task-triggered 作为唯一入口
+          if (remaining <= 0 && !info?.triggered) return false;
           return true;
         }
         if (task.preNotificationSeconds <= 0) return false;

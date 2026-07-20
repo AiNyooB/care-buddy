@@ -36,10 +36,13 @@ function useEntranceAnimation() {
 
   useEffect(() => {
     const start = performance.now();
-    const duration = 500;
+    const duration = 350;
+    const freq = 3.2;
+    const decay = 18.0;
     let raf: number;
     const animate = (now: number) => {
       const t = Math.min((now - start) / duration, 1);
+      const s = 1 - Math.cos(2 * Math.PI * freq * t) * Math.exp(-decay * t);
       setScale(0.85 + (1 - 0.85) * Math.min(1, t * 2.5));
       setOpacity(Math.min(1, t * 4));
       if (t < 1) raf = requestAnimationFrame(animate);
@@ -81,29 +84,7 @@ export function EntertainmentPreview() {
 
   const { scale, opacity } = useEntranceAnimation();
 
-  // 娱乐胶囊窗口：与浮窗一致，挂载即强制 html/body 透明 + 修复 h-full 高度链
-  useEffect(() => {
-    document.documentElement.classList.add('floating-mode');
-    document.documentElement.style.backgroundColor = 'transparent';
-    document.body.style.backgroundColor = 'transparent';
-    document.body.style.background = 'transparent';
-
-    return () => {
-      document.documentElement.classList.remove('floating-mode');
-      document.documentElement.style.backgroundColor = '';
-      document.body.style.backgroundColor = '';
-      document.body.style.background = '';
-    };
-  }, []);
-
-  // 挂载时恢复共享胶囊锚点位置（与浮窗同锚点，避免切换到娱乐胶囊时位置跳变）
-  useEffect(() => {
-    getEntertainmentPosition().then((pos) => {
-      if (pos) {
-        getCurrentWebviewWindow().setPosition(new PhysicalPosition(pos.x, pos.y)).catch(() => {});
-      }
-    }).catch(() => {});
-  }, []);
+  // 挂载时恢复共享胶囊锚点位置（已由 Rust ensure_capsule_window 创建时设定，前端不再覆盖）
 
   // 挂载时拉取配置 + 当前未处理的 triggered 任务
   useEffect(() => {
@@ -368,15 +349,16 @@ export function EntertainmentPreview() {
           transform: `scale(${scale})`,
         }}
       >
-        <div className="relative h-full w-full overflow-hidden rounded-full bg-black [contain:strict]"
+        <div className="relative h-full w-full overflow-hidden rounded-full bg-black/80 [contain:layout]"
           data-draggable
           style={{
             boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06)',
           }}>
           {phase === 'triggered' && (
             <BorderBeam
-              size={120}
-              duration={8}
+              size={80}
+              duration={6}
+              borderWidth={1.5}
               className="from-transparent via-blue-500 to-transparent"
             />
           )}

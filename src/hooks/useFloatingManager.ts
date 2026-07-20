@@ -19,6 +19,9 @@ export function useFloatingManager() {
 
   useEffect(() => {
     mountedRef.current = true;
+    // HMR 防护：单文件更新时清理自身使用字段（useCountdownSync 已是 clearAll() 入口，此处仅细粒度清理）
+    eventCoordinator.floatingVisible = false;
+    eventCoordinator.notifiedPre.clear();
     const unlisten = listen<{ taskId: string; mergedIds?: string[]; action: 'done' | 'snooze' }>(
       'floating-task-dismissed',
       (event) => {

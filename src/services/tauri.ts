@@ -54,7 +54,7 @@ export async function syncTasks(tasks: Task[]): Promise<void> {
     schedule_type: task.scheduleType,
     daily_time: task.dailyTime,
     debug_interval_seconds: task.debugIntervalSeconds ?? 0,
-    lock_duration: task.lockDuration,
+    lock_duration: task.lockDuration ?? 60,
     pre_notification_seconds: task.preNotificationSeconds,
     snooze_minutes: task.snoozeMinutes,
     exercise_ids: task.exerciseIds ?? null,
@@ -356,7 +356,7 @@ export async function startFloatingDrag(): Promise<void> {
  */
 export async function startFloatingResize(targetWidth: number): Promise<void> {
   await invoke('start_capsule_resize', {
-    windowLabel: 'floating-window',
+    windowLabel: 'capsule-window',
     targetWidth,
     isPinned: false,
   });
@@ -368,7 +368,7 @@ export async function startFloatingResize(targetWidth: number): Promise<void> {
  */
 export async function startEntertainmentResize(targetWidth: number): Promise<void> {
   await invoke('start_capsule_resize', {
-    windowLabel: 'entertainment-window',
+    windowLabel: 'capsule-window',
     targetWidth,
     isPinned: false,
   });

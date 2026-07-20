@@ -68,6 +68,11 @@ export function useTriggerHealing() {
 
   useEffect(() => {
     mountedRef.current = true;
+    // HMR 防护：触发态自愈记录归位
+    eventCoordinator.handledTriggers.clear();
+    for (const k of Object.keys(eventCoordinator.triggerStreak)) {
+      delete eventCoordinator.triggerStreak[k];
+    }
 
     // 监听后端分发的 floating-task-triggered 事件，标记已处理
     // 后端在同一 tick 内先 emit floating-task-triggered，再 emit countdown-update，

@@ -557,7 +557,7 @@ function ReminderEditorDialog({
                 </span>
               ) : (
                 <SuffixedNumberField
-                  value={draft.lockDuration}
+                  value={draft.lockDuration ?? 60}
                   min={10}
                   max={600}
                   step={10}

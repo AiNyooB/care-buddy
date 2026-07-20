@@ -65,3 +65,7 @@ log.txt
 dist-node/
 
 .bitfun/
+
+# 测试覆盖率产物
+coverage/
+.vitest/

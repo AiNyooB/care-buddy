@@ -48,7 +48,7 @@ function emitPreviewUpdate() {
     title: candidate.title,
     desc: candidate.desc,
     icon: candidate.icon,
-    remaining: taskStates[candidate.id]!.countdown,
+    remaining: taskStates[candidate.id]?.countdown ?? 0,
     interval: candidate.interval,
     preNotificationSeconds: candidate.preNotificationSeconds,
     otherCount: 0,
@@ -58,6 +58,8 @@ function emitPreviewUpdate() {
 
 export function useModeTransition() {
   useEffect(() => {
+    // HMR 防护：mode 切换浮窗状态归位
+    eventCoordinator.floatingVisible = false;
     const unlisten = onAppModeUpdate(({ mode, displayStrategy }) => {
       if (mode === 'floating') {
         // "app-matched"/"on-trigger"：前端不管理窗口可见性，由 Rust 控制
