@@ -263,7 +263,7 @@ function PackageExerciser({ packageId }: { packageId: string }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm animate-[lockFadeIn_0.3s_ease]">
       <div className="text-center w-full max-w-[480px] p-8">
         <div className="flex items-center justify-between mb-4">
-          <span className="text-white/60 text-sm">{pkg.name} · {currentIndex + 1}/{totalExercises}</span>
+          <span className="text-white/60 text-sm">{t('categories.' + pkg.id)} · {currentIndex + 1}/{totalExercises}</span>
           <div className="flex items-center gap-3">
             {hasGuided && (
               <button

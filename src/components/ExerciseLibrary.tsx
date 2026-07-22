@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHealthStore } from '../store';
-import { exercises, categoryNames, priorityLabels } from '../data/exercises';
+import { exercises, priorityLabels } from '../data/exercises';
 import { guidedExerciseConfigs } from '../data/guided-configs';
 import type { Exercise, ExerciseCategory } from '../types';
 import { Play, Target, CheckCircle, AudioWaveform, Clock } from './Icons';
@@ -191,6 +191,24 @@ export function ExerciseLibrary() {
   const { t } = useTranslation();
   const [selectedCategory, setSelectedCategory] = useState<ExerciseCategory>('spine');
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
+  const tabsScrollRef = useRef<HTMLDivElement>(null);
+
+  // 选中分类变化时，将激活的 tab 横向滚入可视区（不触动垂直布局）
+  useEffect(() => {
+    const container = tabsScrollRef.current;
+    if (!container) return;
+    const el = container.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!el) return;
+    const cRect = container.getBoundingClientRect();
+    const eRect = el.getBoundingClientRect();
+    const relLeft = eRect.left - cRect.left;
+    const relRight = eRect.right - cRect.left;
+    if (relLeft < 0) {
+      container.scrollTo({ left: container.scrollLeft + relLeft - 8, behavior: 'smooth' });
+    } else if (relRight > container.clientWidth) {
+      container.scrollTo({ left: container.scrollLeft + (relRight - container.clientWidth) + 8, behavior: 'smooth' });
+    }
+  }, [selectedCategory]);
 
   const incrementExercisesCompleted = useHealthStore((s) => s.incrementExercisesCompleted);
   const incrementCategoryExercise = useHealthStore((s) => s.incrementCategoryExercise);
@@ -211,8 +229,6 @@ export function ExerciseLibrary() {
     incrementCategoryExercise(exercise.category);
   };
 
-  const categoryTabLabels: Record<ExerciseCategory, string> = categoryNames;
-
   return (
     <div className="flex h-full flex-col">
       {/* 套餐 Hero — 替换旧的 PackageCard 网格 */}
@@ -221,16 +237,18 @@ export function ExerciseLibrary() {
       <Separator className="my-3" style={{ width: 'var(--grid-content)' }} />
 
       <div className="flex min-h-[314px] flex-1 flex-col gap-2">
-        {/* 分类标签 */}
-        <Tabs value={selectedCategory} onValueChange={(v) => setSelectedCategory(v as ExerciseCategory)}>
-          <TabsList variant="line" className="gap-4">
-            {CATEGORIES.map((cat) => (
-              <TabsTrigger key={cat} value={cat} className="border-0">
-                {categoryTabLabels[cat]}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        {/* 分类标签：横向滚动容器，选中 tab 自动滚入可视区 */}
+        <div ref={tabsScrollRef} className="overflow-x-auto scrollbar-hide w-full">
+          <Tabs value={selectedCategory} onValueChange={(v) => setSelectedCategory(v as ExerciseCategory)}>
+            <TabsList variant="line" className="gap-4 inline-flex w-fit pb-2">
+              {CATEGORIES.map((cat) => (
+                <TabsTrigger key={cat} value={cat} className="border-0">
+                  {t('categories.' + cat)}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
 
         {/* 运动列表 — 单列 ItemGroup */}
         <ScrollArea className="min-h-0 flex-1">

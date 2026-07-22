@@ -108,11 +108,11 @@ export function PackageHero() {
             transition={CARD_LAYOUT_TRANSITION}
             type="button"
             onClick={() => openExercisePanel(recommended.id)}
-            aria-label={recommended.name}
+            aria-label={t('categories.' + recommended.id)}
             className="group flex h-full w-[292px] flex-col gap-1.5 overflow-hidden rounded-[10px] border border-border bg-card/80 p-3 text-left shadow-none ring-0 outline-none transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary hover:bg-card  focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0"
           >
             <motion.div layout="position" className="min-w-0">
-              <h3 className="truncate text-type-section-title text-foreground">{recommended.name}</h3>
+              <h3 className="truncate text-type-section-title text-foreground">{t('categories.' + recommended.id)}</h3>
               <p className="mt-0.5 text-type-caption text-muted-foreground">
                 {recommended.duration}
                 {t('time.minutes')} · {recommended.exercises.length}
@@ -147,11 +147,11 @@ export function PackageHero() {
                 transition={CARD_LAYOUT_TRANSITION}
                 type="button"
                 onClick={() => openExercisePanel(pkg.id)}
-                aria-label={pkg.name}
+                aria-label={t('categories.' + pkg.id)}
                 className="group flex h-[68px] shrink-0 flex-col justify-center overflow-hidden rounded-[10px] border border-border bg-card/80 p-3 text-left shadow-none ring-0 outline-none transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary hover:bg-card  focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0"
               >
                 <motion.div layout="position">
-                  <h3 className="truncate text-type-section-title text-foreground">{pkg.name}</h3>
+                  <h3 className="truncate text-type-section-title text-foreground">{t('categories.' + pkg.id)}</h3>
                   <p className="mt-0.5 text-type-caption text-muted-foreground">
                     {pkg.duration}
                     {t('time.minutes')} · {pkg.exercises.length}
@@ -173,11 +173,11 @@ export function PackageHero() {
               transition={CARD_LAYOUT_TRANSITION}
               type="button"
               onClick={() => openExercisePanel(pkg.id)}
-              aria-label={pkg.name}
+              aria-label={t('categories.' + pkg.id)}
               className="group flex flex-1 flex-col justify-center gap-1 overflow-hidden rounded-[10px] border border-border bg-card/80 p-3 text-left shadow-none ring-0 outline-none transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary hover:bg-card  focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0"
             >
               <motion.div layout="position">
-                <h3 className="truncate text-type-section-title text-foreground">{pkg.name}</h3>
+                <h3 className="truncate text-type-section-title text-foreground">{t('categories.' + pkg.id)}</h3>
                 <p className="mt-0.5 text-type-caption text-muted-foreground">
                   {pkg.duration}
                   {t('time.minutes')} · {pkg.exercises.length}

@@ -37,10 +37,10 @@ export function CapsuleShell() {
         {mode === 'floating' ? (
           <motion.div
             key="floating"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
+            initial={{ opacity: 0, y: -4, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 4, scale: 0.95 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 25, mass: 0.5 }}
             className="h-full w-full"
           >
             <FloatingPreview />
@@ -48,10 +48,10 @@ export function CapsuleShell() {
         ) : (
           <motion.div
             key="entertainment"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
+            initial={{ opacity: 0, y: 4, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.95 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 25, mass: 0.5 }}
             className="h-full w-full"
           >
             <EntertainmentPreview />

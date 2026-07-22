@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { TaskIcon } from './Icons';
 import { CircularProgress } from './CircularProgress';
 import { BorderBeam } from './ui/border-beam';
+
 import { Button } from '@/components/ui/button';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';

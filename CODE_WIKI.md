@@ -687,6 +687,12 @@ enum FreezeReason {
 
 `start_capsule_resize` 用独立线程跑 400ms 弹簧公式（freq=2.4, decay=12），`CAPSULE_ANIMATION_ID` AtomicU32 实现打断接续，浮窗与娱乐窗共用同一动画机制。
 
+**DPI 安全取整**：当 DPR 为分数（如 125% = 5/4）时，`round(w * DPR)` 得出的物理宽若不是 DPR 分子（5）的倍数，则 WebView2 计算 CSS viewport 时向上取整导致窗口内容比窗口物理尺寸宽 1-2px，右边被裁切。
+修复：`dpi_safe_physical_width()` 将物理宽向上取整到 DPR 分子的倍数，保证 `ceil(phys / DPR) * DPR = phys`。
+例: target=278, scale=1.25 → round(347.5)=348(非5倍数) → CSS=ceil(348/1.25)=279 → 279*1.25=348.75>348 ✗
+    dpi_safe → 350(5倍数) → CSS=ceil(350/1.25)=280 → 280*1.25=350=350         ✓
+窗口背景色同步设为 `Color(0,0,0,204)`（black/80 匹配胶囊底色），额外取整宽度由同色背景填充，视觉无区别。
+
 ### 10.11 Rust 命令清单（50 个，按类别）
 
 | 类别 | 命令 |
@@ -1009,6 +1015,7 @@ npm run clean
 19. **FloatingPreview 必须不调用 `getCurrentTriggeredTask` 或包含 `isEntertainment` 分支**，以消除双路径风险。
 20. **网络代理**：遇到 webfetch 网络问题，改用 `curl.exe` 走 HTTP 代理：`$env:HTTP_PROXY="http://127.0.0.1:10808"; curl.exe -sL <URL>`。
 21. **小尺寸 UI 文本垂直居中**：`inline-flex items-center` + 固定高度 + `leading-none` 的组合中，字体 ascender/descender 不对称导致文字视觉偏上（约 1px）。修复：用非对称 `pt`/`pb` 下移文字补偿光学偏移。Badge 基础：`pt-[2.5px] pb-[1.5px]`；Toggle sm：`pt-[3px]`；Settings 自定义 span/chip：`pt-[2.5px] pb-[1.5px]`。新增小尺寸文字组件需按容器高度测试光学居中，必要时加非对称 padding。
+22. **胶囊窗口 DPI 安全取整**：DPR 为分数时 `SetWindowPos` 设物理像素会导致 WebView2 CSS viewport 取整偏差（右边缘 1-2px 缺失）。`start_capsule_resize` 与 `resize_capsule_window_sync` 必须通过 `dpi_safe_physical_width()` 将物理宽向上取整到 DPR 分子的倍数（125%→5、150%→3、175%→7 等），窗口背景色 `Color(0,0,0,204)` 匹配胶囊 fill 填充额外宽度。详见 10.10。
 
 ---
 

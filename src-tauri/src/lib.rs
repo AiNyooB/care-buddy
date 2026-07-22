@@ -63,6 +63,7 @@ const FLOATING_HEIGHT: f64 = 48.0;
 #[allow(dead_code)]
 const FLOATING_DEFAULT_WIDTH: f64 = 278.0;
 const FLOATING_PREVIEW_WIDTH: f64 = 156.0;      // 胶囊 预览态宽
+const ENTERTAINMENT_PREVIEW_WIDTH: f64 = 120.0; // 娱乐 预览态/idle 宽
 // —— 胶囊窗口弹簧伸缩动画（移植 NetSpeed-Dynamic start_island_animation）——
 // ANIMATION_ID 做打断接续：新动画递增 ID，旧线程发现 ID 变化即退出。
 static CAPSULE_ANIMATION_ID: AtomicU32 = AtomicU32::new(0);
@@ -1672,6 +1673,9 @@ fn start_timer_thread(app_handle: AppHandle) {
                             if guard.last_reminder_at.is_none() {
                                 guard.last_reminder_at = Some(Instant::now());
                             }
+                            // 先同步 resize 到娱乐 idle 宽（120），再 emit + show
+                            // 避免因 ensure_capsule_window 默认 156 或上次浮窗残留尺寸导致闪错
+                            resize_capsule_window_sync(&app_handle, ENTERTAINMENT_PREVIEW_WIDTH);
                             let _ = app_handle.emit("entertainment-mode-changed", serde_json::json!({ "active": true }));
                             // 娱乐窗口常驻：激活时立即显示（idle 态显示统一倒计时）
                             let _ = show_capsule_window(&app_handle);
@@ -2133,7 +2137,7 @@ fn ensure_capsule_window(app: &AppHandle, visible_on_create: bool) -> Result<Web
     .skip_taskbar(true)
     .visible(visible_on_create)
     .transparent(true)
-    .background_color(tauri::utils::config::Color(0, 0, 0, 0))
+    .background_color(tauri::utils::config::Color(0, 0, 0, 204))
     .shadow(false)
     .always_on_top(true);
 
@@ -2206,6 +2210,43 @@ fn force_capsule_topmost(app: &AppHandle) {
                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
                     )
                 };
+            }
+        }
+    }
+}
+
+/// 裸 Win32 同步设胶囊窗口物理尺寸（无动画）。参考 NetSpeed onMounted 的 appWindow.setSize。
+/// 用于"激活时先设好尺寸再显示"，避免 show 后前端才 resize 导致的闪错。
+fn resize_capsule_window_sync(app: &AppHandle, target_width: f64) {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::Foundation::{HWND, RECT};
+        use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
+        use windows::Win32::UI::WindowsAndMessaging::SetWindowPos;
+        use windows::Win32::UI::WindowsAndMessaging::{SWP_NOACTIVATE, SWP_NOZORDER};
+
+        if let Some(window) = app.get_webview_window("capsule-window") {
+            if let Ok(hwnd) = window.hwnd() {
+                let scale = window.scale_factor().unwrap_or(1.0);
+                let w = dpi_safe_physical_width(target_width, scale) as i32;
+                let h = dpi_safe_physical_width(FLOATING_HEIGHT, scale) as i32;
+
+                unsafe {
+                    let mut rect = RECT::default();
+                    let _ = GetWindowRect(HWND(hwnd.0), &mut rect);
+                    let cx = (rect.left + rect.right) / 2;
+                    let oy = rect.top;
+
+                    let _ = SetWindowPos(
+                        HWND(hwnd.0),
+                        HWND(std::ptr::null_mut()),
+                        cx - w / 2,
+                        oy,
+                        w,
+                        h,
+                        SWP_NOACTIVATE | SWP_NOZORDER,
+                    );
+                }
             }
         }
     }
@@ -2330,6 +2371,27 @@ fn set_floating_window_always_on_top(app: AppHandle, always_on_top: bool) -> Res
     window.set_always_on_top(always_on_top).map_err(|e| e.to_string())
 }
 
+/// 计算 WebView2 不裁切的物理像素宽：向上取整到 DPR 分子的倍数。
+/// DPR 为分数(如 5/4=125%)时，非倍数物理宽会导致 CSS viewport 取整后内容溢出右边界。
+/// 例: target=278, scale=1.25 → min=347.5, 5倍数→ 350 → CSS=280 → 280*1.25=350 ✓
+fn dpi_safe_physical_width(target_css: f64, scale: f64) -> f64 {
+    let pct = (scale * 100.0).round() as i32;
+    // DPR 分子（最简分数）：
+    // 125%=5/4→5, 150%=3/2→3, 175%=7/4→7, 200%=2/1→1, 225%=9/4→9, 250%=5/2→5...
+    let p = match pct {
+        125 | 625 => 5,
+        150 | 350 | 650 | 850 => 3,
+        175 | 525 | 675 | 975 => 7,
+        225 | 725 => 9,
+        250 | 750 => 5,
+        275 | 775 => 11,
+        300 | 400 | 500 | 800 => 1,
+        _ => 1,
+    } as f64;
+    let min_phys = target_css * scale;
+    (min_phys / p).ceil() * p
+}
+
 /// 胶囊窗口整体弹簧伸缩（消除 WebView2 中间帧宽度缓存导致的裁切）。
 /// 由前端在 phase 切换时调用：胶囊=窗口，前端 w-full 自动跟随窗口物理尺寸。
 /// - window_label: "capsule-window"
@@ -2368,8 +2430,12 @@ fn start_capsule_resize(app: AppHandle, window_label: String, target_width: f64,
         let center_x = (rect.left + rect.right) / 2;
         let origin_y = rect.top;
 
-        let target_w = (target_width * scale).round();
-        let target_h = (FLOATING_HEIGHT * scale).round();
+        // 终态物理宽：使用 DPI 安全取整，避免 CSS viewport 向上取整导致右边 1-2px 缺失
+        let safe_phys_w = dpi_safe_physical_width(target_width, scale);
+        let safe_phys_h = dpi_safe_physical_width(FLOATING_HEIGHT, scale);
+        // 动画终点（弹簧公式保证平滑收敛到 safe_phys_w）
+        let target_w = safe_phys_w;
+        let target_h = safe_phys_h;
 
         // 打断接续：递增动画 ID，旧线程发现 ID 变化即退出
         let my_id = CAPSULE_ANIMATION_ID.fetch_add(1, Ordering::SeqCst) + 1;
@@ -2425,25 +2491,25 @@ fn start_capsule_resize(app: AppHandle, window_label: String, target_width: f64,
                 std::thread::sleep(std::time::Duration::from_millis(8));
             }
 
-            // 结束：写入精确终态并清锚点（若未被打断）
+            // 结束：用物理像素精确写入终态（DPI 安全宽度保证 CSS viewport 不溢出）
             if CAPSULE_ANIMATION_ID.load(Ordering::SeqCst) == my_id {
-                let w = target_w as i32;
-                let h = target_h as i32;
+                let mut anchor = CAPSULE_ANCHOR.lock().unwrap_or_else(|e| e.into_inner());
+                if anchor.as_ref().map(|a| a.active_id == my_id).unwrap_or(false) {
+                    *anchor = None;
+                }
+                drop(anchor);
+                // 从 CAPSULE_ANCHOR 读最新锚点（已清空则 fallback）
                 let (cx, oy) = read_anchor();
                 unsafe {
                     let _ = SetWindowPos(
                         hwnd,
                         HWND::default(),
-                        cx - w / 2,
+                        cx - (safe_phys_w as i32) / 2,
                         oy,
-                        w,
-                        h,
+                        safe_phys_w as i32,
+                        safe_phys_h as i32,
                         SWP_NOACTIVATE | SWP_NOZORDER,
                     );
-                }
-                let mut anchor = CAPSULE_ANCHOR.lock().unwrap_or_else(|e| e.into_inner());
-                if anchor.as_ref().map(|a| a.active_id == my_id).unwrap_or(false) {
-                    *anchor = None;
                 }
             }
         });
