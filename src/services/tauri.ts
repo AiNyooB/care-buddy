@@ -352,24 +352,26 @@ export async function startFloatingDrag(): Promise<void> {
 
 /**
  * 浮窗胶囊整体弹簧伸缩（窗口 = 胶囊）。
- * 预览态传 156，触发态传 278（须与 Rust 常量 FLOATING_PREVIEW_WIDTH / FLOATING_DEFAULT_WIDTH 保持一致）。
+ * 预览态传 156×40，触发态传 278×48。
  */
-export async function startFloatingResize(targetWidth: number): Promise<void> {
+export async function startFloatingResize(targetWidth: number, targetHeight: number): Promise<void> {
   await invoke('start_capsule_resize', {
     windowLabel: 'capsule-window',
     targetWidth,
+    targetHeight,
     isPinned: false,
   });
 }
 
 /**
  * 娱乐胶囊整体弹簧伸缩（窗口 = 胶囊）。
- * idle 态传 120，触发态传 278（须与 Rust 常量 ENTERTAINMENT_PREVIEW_WIDTH / FLOATING_DEFAULT_WIDTH 保持一致）。
+ * active 态传 120×40，触发态传 278×48。
  */
-export async function startEntertainmentResize(targetWidth: number): Promise<void> {
+export async function startEntertainmentResize(targetWidth: number, targetHeight: number): Promise<void> {
   await invoke('start_capsule_resize', {
     windowLabel: 'capsule-window',
     targetWidth,
+    targetHeight,
     isPinned: false,
   });
 }

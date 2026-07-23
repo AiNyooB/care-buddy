@@ -4,6 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>健康提醒助手</title>
+  <script>
+    // 胶囊窗口提前设透明，避免 React 加载前白闪
+    if (location.search.includes('mode=capsule')) {
+      document.documentElement.classList.add('floating-mode');
+      document.documentElement.style.background = 'transparent';
+      document.body.style.background = 'transparent';
+      var app = document.getElementById('app');
+      if (app) app.style.background = 'transparent';
+    }
+  </script>
 </head>
 <body>
   <div id="app"></div>

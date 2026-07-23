@@ -56,14 +56,15 @@ struct FloatingState(Mutex<bool>);
 
 // 悬浮窗尺寸常量
 // —— 方案 A：窗口尺寸写死。改内容/文案导致自然宽高超过这些值会被裁切，
-//    需同步改此处常量 + 前端 startXxxResize(N) 参数（高度还要改 start_capsule_resize 内的 FLOATING_HEIGHT 引用）。
-const FLOATING_HEIGHT: f64 = 48.0;
+//    需同步改此处常量 + 前端 startXxxResize(N) 参数。
+const FLOATING_HEIGHT: f64 = 40.0;  // 胶囊 预览态高（触发态高48由前端 target_height 传入）
 // 触发态宽 278：仅作为「前端 CAPSULE_TRIGGERED_WIDTH=278」的文档基准（start_capsule_resize 的目标宽由前端按参数传入）。
 // 改触发态宽时须前后端同步；保留此常量便于 grep 对齐，故允许 dead_code。
 #[allow(dead_code)]
 const FLOATING_DEFAULT_WIDTH: f64 = 278.0;
 const FLOATING_PREVIEW_WIDTH: f64 = 156.0;      // 胶囊 预览态宽
 const ENTERTAINMENT_PREVIEW_WIDTH: f64 = 120.0; // 娱乐 预览态/idle 宽
+const ENTERTAINMENT_PREVIEW_HEIGHT: f64 = 40.0; // 娱乐 预览态/idle 高
 // —— 胶囊窗口弹簧伸缩动画（移植 NetSpeed-Dynamic start_island_animation）——
 // ANIMATION_ID 做打断接续：新动画递增 ID，旧线程发现 ID 变化即退出。
 static CAPSULE_ANIMATION_ID: AtomicU32 = AtomicU32::new(0);
@@ -1675,7 +1676,7 @@ fn start_timer_thread(app_handle: AppHandle) {
                             }
                             // 先同步 resize 到娱乐 idle 宽（120），再 emit + show
                             // 避免因 ensure_capsule_window 默认 156 或上次浮窗残留尺寸导致闪错
-                            resize_capsule_window_sync(&app_handle, ENTERTAINMENT_PREVIEW_WIDTH);
+                            resize_capsule_window_sync(&app_handle, ENTERTAINMENT_PREVIEW_WIDTH, ENTERTAINMENT_PREVIEW_HEIGHT);
                             let _ = app_handle.emit("entertainment-mode-changed", serde_json::json!({ "active": true }));
                             // 娱乐窗口常驻：激活时立即显示（idle 态显示统一倒计时）
                             let _ = show_capsule_window(&app_handle);
@@ -2217,7 +2218,7 @@ fn force_capsule_topmost(app: &AppHandle) {
 
 /// 裸 Win32 同步设胶囊窗口物理尺寸（无动画）。参考 NetSpeed onMounted 的 appWindow.setSize。
 /// 用于"激活时先设好尺寸再显示"，避免 show 后前端才 resize 导致的闪错。
-fn resize_capsule_window_sync(app: &AppHandle, target_width: f64) {
+fn resize_capsule_window_sync(app: &AppHandle, target_width: f64, target_height: f64) {
     #[cfg(target_os = "windows")]
     {
         use windows::Win32::Foundation::{HWND, RECT};
@@ -2229,7 +2230,7 @@ fn resize_capsule_window_sync(app: &AppHandle, target_width: f64) {
             if let Ok(hwnd) = window.hwnd() {
                 let scale = window.scale_factor().unwrap_or(1.0);
                 let w = dpi_safe_physical_width(target_width, scale) as i32;
-                let h = dpi_safe_physical_width(FLOATING_HEIGHT, scale) as i32;
+                let h = dpi_safe_physical_width(target_height, scale) as i32;
 
                 unsafe {
                     let mut rect = RECT::default();
@@ -2395,10 +2396,11 @@ fn dpi_safe_physical_width(target_css: f64, scale: f64) -> f64 {
 /// 胶囊窗口整体弹簧伸缩（消除 WebView2 中间帧宽度缓存导致的裁切）。
 /// 由前端在 phase 切换时调用：胶囊=窗口，前端 w-full 自动跟随窗口物理尺寸。
 /// - window_label: "capsule-window"
-/// - target_width: 目标逻辑宽（预览/idle 或触发态），目标高恒为 FLOATING_HEIGHT
+/// - target_width: 目标逻辑宽（预览/idle 或触发态）
+/// - target_height: 目标逻辑高（预览态 36，触发态 48）
 /// - is_pinned: 预留参数（当前统一顶部居中锚定，不区分）
 #[tauri::command]
-fn start_capsule_resize(app: AppHandle, window_label: String, target_width: f64, _is_pinned: bool) {
+fn start_capsule_resize(app: AppHandle, window_label: String, target_width: f64, target_height: f64, _is_pinned: bool) {
     #[cfg(target_os = "windows")]
     {
         use std::ffi::c_void;
@@ -2430,9 +2432,9 @@ fn start_capsule_resize(app: AppHandle, window_label: String, target_width: f64,
         let center_x = (rect.left + rect.right) / 2;
         let origin_y = rect.top;
 
-        // 终态物理宽：使用 DPI 安全取整，避免 CSS viewport 向上取整导致右边 1-2px 缺失
+        // 终态物理宽高：使用 DPI 安全取整，避免 CSS viewport 向上取整导致右边 1-2px 缺失
         let safe_phys_w = dpi_safe_physical_width(target_width, scale);
-        let safe_phys_h = dpi_safe_physical_width(FLOATING_HEIGHT, scale);
+        let safe_phys_h = dpi_safe_physical_width(target_height, scale);
         // 动画终点（弹簧公式保证平滑收敛到 safe_phys_w）
         let target_w = safe_phys_w;
         let target_h = safe_phys_h;
@@ -2517,7 +2519,7 @@ fn start_capsule_resize(app: AppHandle, window_label: String, target_width: f64,
 
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (app, window_label, target_width, _is_pinned);
+        let _ = (app, window_label, target_width, target_height, _is_pinned);
     }
 }
 
@@ -3352,8 +3354,10 @@ pub fn run() {
                     std::thread::spawn(move || {
                         // 创建胶囊窗口并显示，让 WebView2 完成初始化
                         if let Ok(window) = ensure_capsule_window(&app_handle, false) {
-                            // 先置顶再显示，避免窗口短暂出现在其他窗口后面
-                            let _ = window.set_always_on_top(true);
+                            // 用 force_capsule_topmost 代替 set_always_on_top：
+                            // Tauri 的 set_always_on_top 内部 SetWindowPos 不带 SWP_NOMOVE，
+                            // 会重置窗口位置到(0,0)。force_capsule_topmost 只改 z-order 不动位置。
+                            force_capsule_topmost(&app_handle);
                             let _ = window.show();
                             std::thread::sleep(std::time::Duration::from_millis(100));
                             // 根据策略决定是否隐藏
@@ -3363,7 +3367,6 @@ pub fn run() {
                                 .unwrap_or_default();
                             if strategy != "always" {
                                 let _ = window.hide();
-                                let _ = window.set_always_on_top(false);
                             }
                         }
                     });

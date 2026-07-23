@@ -3,22 +3,15 @@ import { listen } from '@tauri-apps/api/event';
 import { AnimatePresence, motion } from 'motion/react';
 import { FloatingPreview } from './FloatingPreview';
 import { EntertainmentPreview } from './EntertainmentPreview';
-import { getEntertainmentActive } from '../services';
+import { getEntertainmentActive, startFloatingResize, startEntertainmentResize } from '../services';
 
 export function CapsuleShell() {
   const [mode, setMode] = useState<'floating' | 'entertainment'>('floating');
 
   useEffect(() => {
     document.documentElement.classList.add('floating-mode');
-    document.documentElement.style.backgroundColor = 'transparent';
-    document.body.style.backgroundColor = 'transparent';
-    document.body.style.background = 'transparent';
-
     return () => {
       document.documentElement.classList.remove('floating-mode');
-      document.documentElement.style.backgroundColor = '';
-      document.body.style.backgroundColor = '';
-      document.body.style.background = '';
     };
   }, []);
 
@@ -30,7 +23,12 @@ export function CapsuleShell() {
       .then((active) => setMode(active ? 'entertainment' : 'floating'))
       .catch(console.warn);
 
-    listen<{ active: boolean }>('entertainment-mode-changed', (event) => {
+    listen<{ active: boolean }>('entertainment-mode-changed', async (event) => {
+      if (event.payload.active) {
+        await startEntertainmentResize(120, 40);
+      } else {
+        await startFloatingResize(156, 40);
+      }
       setMode(event.payload.active ? 'entertainment' : 'floating');
     }).then((f) => cleanups.push(f));
 

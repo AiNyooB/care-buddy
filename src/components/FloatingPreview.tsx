@@ -43,7 +43,7 @@ interface TriggeredPayload {
   mergedIds?: string[];      // 合并的其他任务 ID
 }
 
-type FloatingPhase = 'idle' | 'preview' | 'triggered';
+type FloatingPhase = 'preview' | 'triggered';
 
 function useSpringValue(target: number, config?: { tension?: number; damping?: number }) {
   const { tension = 0.08, damping = 0.6 } = config ?? {};
@@ -99,7 +99,7 @@ function useEntranceAnimation() {
 export function FloatingPreview() {
   const { t } = useTranslation();
   const [preview, setPreview] = useState<PreviewPayload | null>(null);
-  const [phase, setPhase] = useState<FloatingPhase>('idle');
+  const [phase, setPhase] = useState<FloatingPhase>('preview');
   const [triggeredTask, setTriggeredTask] = useState<TriggeredPayload | null>(null);
   const [mode, setMode] = useState<AppMode>('notification');
   const [floatingOpacity, setFloatingOpacity] = useState(55);
@@ -109,7 +109,9 @@ export function FloatingPreview() {
   // 方案 A：窗口=胶囊，宽度由 Rust 弹簧驱动。这两个值须与 Rust 常量一致：
   // FLOATING_PREVIEW_WIDTH(156) / FLOATING_DEFAULT_WIDTH(278)。改宽度须两边同步。
   const CAPSULE_PREVIEW_WIDTH = 156;
+  const CAPSULE_PREVIEW_HEIGHT = 40;
   const CAPSULE_TRIGGERED_WIDTH = 278;
+  const CAPSULE_TRIGGERED_HEIGHT = 48;
 
   // 用 ref 保存最新状态，供事件监听使用，避免重复订阅
   const phaseRef = useRef(phase);
@@ -169,7 +171,7 @@ export function FloatingPreview() {
         return;
       }
       setTriggeredTask(event.payload);
-      startFloatingResize(CAPSULE_TRIGGERED_WIDTH).catch(console.warn);
+      startFloatingResize(CAPSULE_TRIGGERED_WIDTH, CAPSULE_TRIGGERED_HEIGHT).catch(console.warn);
       setDismissing(false);
       dismissingRef.current = false;
       phaseRef.current = 'triggered';
@@ -188,7 +190,7 @@ export function FloatingPreview() {
           autoTimeoutRef.current = null;
         }
         setTriggeredTask(null);
-        startFloatingResize(CAPSULE_PREVIEW_WIDTH).catch(console.warn);
+        startFloatingResize(CAPSULE_PREVIEW_WIDTH, CAPSULE_PREVIEW_HEIGHT).catch(console.warn);
         phaseRef.current = 'preview';
         setPhase('preview');
       }
@@ -201,7 +203,7 @@ export function FloatingPreview() {
         autoTimeoutRef.current = null;
       }
       setTriggeredTask(null);
-      startFloatingResize(CAPSULE_PREVIEW_WIDTH).catch(console.warn);
+      startFloatingResize(CAPSULE_PREVIEW_WIDTH, CAPSULE_PREVIEW_HEIGHT).catch(console.warn);
       phaseRef.current = 'preview';
       setPhase('preview');
     }).then((f) => { cleanupResetAll = f; });
@@ -215,7 +217,7 @@ export function FloatingPreview() {
           autoTimeoutRef.current = null;
         }
         setTriggeredTask(null);
-        startFloatingResize(CAPSULE_PREVIEW_WIDTH).catch(console.warn);
+        startFloatingResize(CAPSULE_PREVIEW_WIDTH, CAPSULE_PREVIEW_HEIGHT).catch(console.warn);
         phaseRef.current = 'preview';
         setPhase('preview');
       }
@@ -229,13 +231,13 @@ export function FloatingPreview() {
           autoTimeoutRef.current = null;
         }
         setTriggeredTask(null);
-        startFloatingResize(CAPSULE_PREVIEW_WIDTH).catch(console.warn);
+        startFloatingResize(CAPSULE_PREVIEW_WIDTH, CAPSULE_PREVIEW_HEIGHT).catch(console.warn);
         phaseRef.current = 'preview';
         setPhase('preview');
       } else {
         if (phaseRef.current === 'triggered') {
           setTriggeredTask(null);
-          startFloatingResize(CAPSULE_PREVIEW_WIDTH).catch(console.warn);
+          startFloatingResize(CAPSULE_PREVIEW_WIDTH, CAPSULE_PREVIEW_HEIGHT).catch(console.warn);
           phaseRef.current = 'preview';
           setPhase('preview');
         }
@@ -282,7 +284,7 @@ export function FloatingPreview() {
       await action();
       // action 成功后再清理 UI 状态，失败时保留 triggered 态供用户重试
       setPhase('preview');
-      startFloatingResize(CAPSULE_PREVIEW_WIDTH).catch(console.warn);
+      startFloatingResize(CAPSULE_PREVIEW_WIDTH, CAPSULE_PREVIEW_HEIGHT).catch(console.warn);
       setTriggeredTask(null);
       await emit('floating-task-dismissed', {
         taskId,
@@ -299,7 +301,7 @@ export function FloatingPreview() {
       if (triggeredQueue.current.length > 0) {
         const next = triggeredQueue.current.shift()!;
         setTriggeredTask(next);
-        startFloatingResize(CAPSULE_TRIGGERED_WIDTH).catch(console.warn);
+        startFloatingResize(CAPSULE_TRIGGERED_WIDTH, CAPSULE_TRIGGERED_HEIGHT).catch(console.warn);
         phaseRef.current = 'triggered';
         setPhase('triggered');
       }
@@ -391,61 +393,80 @@ export function FloatingPreview() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="flex w-full items-center gap-3"
+                className="flex w-full items-center"
               >
-                {/* 环形进度图标 */}
-                {hasData || (phase === 'triggered' && triggeredTask) ? (
-                  <div className="relative shrink-0" style={{ width: 32, height: 32 }}>
-                    <CircularProgress
-                      size={32}
-                      strokeWidth={3}
-                      progress={phase === 'triggered' ? 0 : springPct}
-                      color="rgba(255,255,255,0.7)"
-                    />
-                    <div className="absolute inset-0 flex items-center justify-center text-white">
-                      <TaskIcon icon={phase === 'triggered' && triggeredTask ? triggeredTask.icon : preview!.icon} size={15} />
+                {/* 左：图标（预览态独立 / 触发态 CircularProgress 套图标） */}
+                <div className="flex items-center gap-1 min-w-0 flex-1">
+                  {phase === 'triggered' && triggeredTask ? (
+                    <div className="relative shrink-0" style={{ width: 32, height: 32 }}>
+                      <CircularProgress
+                        size={32}
+                        strokeWidth={3}
+                        progress={0}
+                        color="var(--color-success)"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center text-white">
+                        <TaskIcon icon={triggeredTask.icon} size={24} />
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex size-[32px] shrink-0 items-center justify-center">
-                    <Clock size={17} className="text-white/50" />
-                  </div>
-                )}
+                  ) : hasData ? (
+                    <div className="flex size-[24px] shrink-0 items-center justify-center text-white">
+                      <TaskIcon icon={preview!.icon} size={24} />
+                    </div>
+                  ) : (
+                    <div className="flex size-[24px] shrink-0 items-center justify-center text-white/50">
+                      <Clock size={24} />
+                    </div>
+                  )}
 
-                {/* 中：标题 */}
-                <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
-                  <span className="truncate text-sm font-medium leading-tight text-white/90">
-                    {phase === 'triggered' && triggeredTask
-                      ? t(`tasks.${triggeredTask.taskId}.title`, { defaultValue: triggeredTask.title })
-                      : hasData
-                        ? t(`tasks.${preview!.taskId}.title`, { defaultValue: preview!.title })
-                        : t('floating.noReminder', { defaultValue: '暂无提醒' })}
-                  </span>
+                  {/* 中：标题 */}
+                  <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+                    <span className="truncate text-sm font-medium leading-tight text-white/90">
+                      {phase === 'triggered' && triggeredTask
+                        ? t(`tasks.${triggeredTask.taskId}.title`, { defaultValue: triggeredTask.title })
+                        : hasData
+                          ? t(`tasks.${preview!.taskId}.title`, { defaultValue: preview!.title })
+                          : t('floating.noReminder', { defaultValue: '暂无提醒' })}
+                    </span>
+                  </div>
                 </div>
 
-                {/* 右：操作按钮 */}
-                {phase === 'triggered' && triggeredTask && (
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <Button
-                      size="default"
-                      className="justify-center gap-1 pointer-events-auto rounded-2xl bg-white/10 text-white hover:bg-white/20"
-                      onClick={handleSnooze}
-                      disabled={dismissing}
-                    >
-                      <Clock3 size={14} />
-                      {floatingSnoozeMinutes}{t('time.minutes')}
-                    </Button>
-                    <Button
-                      size="default"
-                      className="justify-center gap-1 pointer-events-auto rounded-2xl bg-white text-neutral-900 hover:bg-white/90"
-                      onClick={handleDone}
-                      disabled={dismissing}
-                    >
-                      <Check size={12} />
-                      {t('floating.done')}
-                    </Button>
-                  </div>
-                )}
+                {/* 右：倒计时指示器（预览态） + 操作按钮（触发态） */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {phase !== 'triggered' && hasData ? (
+                    <div className="relative shrink-0" style={{ width: 24, height: 24 }}>
+                      <CircularProgress
+                        size={24}
+                        strokeWidth={2.5}
+                        progress={springPct}
+                        color="rgba(255,255,255,0.7)"
+                      />
+                    </div>
+                  ) : null}
+
+                  {phase === 'triggered' && triggeredTask && (
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        size="default"
+                        className="justify-center gap-1 pointer-events-auto rounded-2xl bg-white/10 text-white hover:bg-white/20"
+                        onClick={handleSnooze}
+                        disabled={dismissing}
+                      >
+                        <Clock3 size={14} />
+                        {floatingSnoozeMinutes}{t('time.minutes')}
+                      </Button>
+                      <Button
+                        size="default"
+                        className="justify-center gap-1 pointer-events-auto rounded-2xl bg-white text-neutral-900 hover:bg-white/90"
+                        onClick={handleDone}
+                        disabled={dismissing}
+                      >
+                        <Check size={12} />
+                        {t('floating.done')}
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </motion.div>
             </AnimatePresence>
           </div>

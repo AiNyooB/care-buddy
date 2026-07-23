@@ -1,10 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { listen, emit } from '@tauri-apps/api/event';
-import { Check, Clock3, Play } from 'lucide-react';
+import { Check, Clock3, Gamepad2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { TaskIcon } from './Icons';
 import { BorderBeam } from './ui/border-beam';
+import { CircularProgress } from './CircularProgress';
 
 import { Button } from '@/components/ui/button';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
@@ -29,7 +30,7 @@ interface TriggeredPayload {
   mergedIds?: string[];
 }
 
-type EntertainmentPhase = 'idle' | 'triggered';
+type EntertainmentPhase = 'active' | 'triggered';
 
 function useEntranceAnimation() {
   const [scale, setScale] = useState(0.85);
@@ -57,19 +58,21 @@ function useEntranceAnimation() {
 
 // 方案 A：窗口=胶囊，宽度由 Rust 弹簧驱动。这两个值须与 Rust 常量一致：
 // ENTERTAINMENT_PREVIEW_WIDTH(120) / FLOATING_DEFAULT_WIDTH(278)。改宽度须两边同步。
-const CAPSULE_IDLE_WIDTH = 120;
+const CAPSULE_ACTIVE_WIDTH = 120;
+const CAPSULE_ACTIVE_HEIGHT = 40;
 const CAPSULE_TRIGGERED_WIDTH = 278;
+const CAPSULE_TRIGGERED_HEIGHT = 48;
 
 export function EntertainmentPreview() {
   const { t } = useTranslation();
-  const [phase, setPhase] = useState<EntertainmentPhase>('idle');
+  const [phase, setPhase] = useState<EntertainmentPhase>('active');
   const [triggeredTask, setTriggeredTask] = useState<TriggeredPayload | null>(null);
   const [entertainmentOpacity, setEntertainmentOpacity] = useState(70);
   const [entertainmentSnoozeMinutes, setEntertainmentSnoozeMinutes] = useState(10);
   const [dismissing, setDismissing] = useState(false);
 
   // 娱乐窗口是独立 webview，未挂载 <App/>，store 里没有倒计时数据。
-  // 因此自行订阅后端全局广播的 countdown-update，用本地 state 驱动 idle 态显示。
+  // 因此自行订阅后端全局广播的 countdown-update，用本地 state 驱动 active 态显示。
   const [entertainmentCountdown, setEntertainmentCountdown] = useState<{
     remaining: number;
     total: number;
@@ -102,7 +105,7 @@ export function EntertainmentPreview() {
         // FE-1.7 修复：getCurrentTriggeredTask 已强类型化，无需双重断言。
         // 本地 TriggeredPayload 与 TriggeredTaskPayload 结构一致。
         setTriggeredTask(payload);
-        startEntertainmentResize(CAPSULE_TRIGGERED_WIDTH).catch(console.warn);
+        startEntertainmentResize(CAPSULE_TRIGGERED_WIDTH, CAPSULE_TRIGGERED_HEIGHT).catch(console.warn);
         phaseRef.current = 'triggered';
         setPhase('triggered');
       })
@@ -128,7 +131,7 @@ export function EntertainmentPreview() {
         setTriggeredTask(task);
       } else {
         setTriggeredTask(task);
-        startEntertainmentResize(CAPSULE_TRIGGERED_WIDTH).catch(console.warn);
+        startEntertainmentResize(CAPSULE_TRIGGERED_WIDTH, CAPSULE_TRIGGERED_HEIGHT).catch(console.warn);
         phaseRef.current = 'triggered';
         setPhase('triggered');
       }
@@ -143,9 +146,9 @@ export function EntertainmentPreview() {
           autoTimeoutRef.current = null;
         }
         setTriggeredTask(null);
-        startEntertainmentResize(CAPSULE_IDLE_WIDTH).catch(console.warn);
-        phaseRef.current = 'idle';
-        setPhase('idle');
+        startEntertainmentResize(CAPSULE_ACTIVE_WIDTH, CAPSULE_ACTIVE_HEIGHT).catch(console.warn);
+        phaseRef.current = 'active';
+        setPhase('active');
       } else {
         // 单任务清除：若当前显示的 triggered 任务包含该 ID，则清除
         const current = triggeredTaskRef.current;
@@ -156,9 +159,9 @@ export function EntertainmentPreview() {
             autoTimeoutRef.current = null;
           }
           setTriggeredTask(null);
-          startEntertainmentResize(CAPSULE_IDLE_WIDTH).catch(console.warn);
-          phaseRef.current = 'idle';
-          setPhase('idle');
+          startEntertainmentResize(CAPSULE_ACTIVE_WIDTH, CAPSULE_ACTIVE_HEIGHT).catch(console.warn);
+          phaseRef.current = 'active';
+          setPhase('active');
         }
       }
     }).then((f) => { cleanupCleared = f; });
@@ -175,16 +178,16 @@ export function EntertainmentPreview() {
           autoTimeoutRef.current = null;
         }
         setTriggeredTask(null);
-        startEntertainmentResize(CAPSULE_IDLE_WIDTH).catch(console.warn);
-        phaseRef.current = 'idle';
-        setPhase('idle');
+        startEntertainmentResize(CAPSULE_ACTIVE_WIDTH, CAPSULE_ACTIVE_HEIGHT).catch(console.warn);
+        phaseRef.current = 'active';
+        setPhase('active');
       } else {
         // 退出空闲：若仍卡在 triggered 态（理论上不应发生，但 IPC 乱序时可能）则归位 idle
         if (phaseRef.current === 'triggered') {
           setTriggeredTask(null);
-          startEntertainmentResize(CAPSULE_IDLE_WIDTH).catch(console.warn);
-          phaseRef.current = 'idle';
-          setPhase('idle');
+          startEntertainmentResize(CAPSULE_ACTIVE_WIDTH, CAPSULE_ACTIVE_HEIGHT).catch(console.warn);
+          phaseRef.current = 'active';
+          setPhase('active');
         }
       }
     }).then((f) => { cleanupIdle = f; });
@@ -215,9 +218,9 @@ export function EntertainmentPreview() {
         autoTimeoutRef.current = null;
       }
       setTriggeredTask(null);
-      startEntertainmentResize(CAPSULE_IDLE_WIDTH).catch(console.warn);
-      phaseRef.current = 'idle';
-      setPhase('idle');
+      // resize 由 CapsuleShell 统一管理，避免与 startFloatingResize 竞态
+      phaseRef.current = 'active';
+      setPhase('active');
     }).then((fn) => { unlisten = fn; });
     return () => { unlisten?.(); };
   }, []);
@@ -273,8 +276,8 @@ export function EntertainmentPreview() {
     }
     try {
       await action();
-      setPhase('idle');
-      startEntertainmentResize(CAPSULE_IDLE_WIDTH).catch(console.warn);
+      setPhase('active');
+      startEntertainmentResize(CAPSULE_ACTIVE_WIDTH, CAPSULE_ACTIVE_HEIGHT).catch(console.warn);
       setTriggeredTask(null);
       // FE-1.9 修复：emit 真实 taskId（原为空串），下游监听方可拿到主任务 ID。
       await emit('entertainment-task-dismissed', {
@@ -366,65 +369,73 @@ export function EntertainmentPreview() {
           <div className="absolute inset-0 z-1 flex items-center justify-center gap-2 px-2 py-2">
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
-                key={phase === 'triggered' ? 'triggered' : 'idle'}
+                key={phase === 'triggered' ? 'triggered' : 'active'}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="flex w-full items-center gap-3"
+                className="flex w-full items-center"
               >
-                {/* 图标 */}
-                {phase === 'triggered' && triggeredTask ? (
-                  <div className="flex size-[32px] shrink-0 items-center justify-center text-white">
-                    <TaskIcon icon={triggeredTask.icon} size={15} />
-                  </div>
-                ) : (
-                  <div className="flex size-[16px] shrink-0 items-center justify-center text-white/80">
-                    <Play size={13} className="fill-current" />
-                  </div>
-                )}
-
-                {/* 标题 / 倒计时 */}
-                <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+                {/* 左：图标（active 独立 / triggered CircularProgress 套图标） */}
+                <div className="flex items-center gap-1 min-w-0 flex-1">
                   {phase === 'triggered' && triggeredTask ? (
-                    <span className="truncate text-sm font-medium leading-tight text-white/90">
-                      {t('settings.entertainmentCapsulePrefix')}{t(`tasks.${triggeredTask.taskId}.title`, { defaultValue: triggeredTask.title })}
-                    </span>
+                    <div className="relative shrink-0" style={{ width: 32, height: 32 }}>
+                      <CircularProgress
+                        size={32}
+                        strokeWidth={3}
+                        progress={0}
+                        color="var(--color-success)"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center text-white">
+                        <TaskIcon icon={triggeredTask.icon} size={20} />
+                      </div>
+                    </div>
                   ) : (
-                    <div className="flex min-w-0 flex-col justify-center leading-none">
-                      <span className="text-[10px] font-medium text-white/55">{t('settings.entertainmentCapsuleIdle')}</span>
-                      <span className="text-sm font-semibold text-white/90 tabular-nums">
-                        {entertainmentCountdown && entertainmentCountdown.remaining > 0
-                          ? `${String(Math.floor(entertainmentCountdown.remaining / 60)).padStart(2, '0')}:${String(entertainmentCountdown.remaining % 60).padStart(2, '0')}`
-                          : '--:--'}
+                    <div className="flex size-[24px] shrink-0 items-center justify-center text-white/80">
+                      <Gamepad2 size={24} />
+                    </div>
+                  )}
+
+                  {/* 中：标题 / 倒计时 */}
+                  <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+                    {phase === 'triggered' && triggeredTask ? (
+                      <span className="truncate text-sm font-medium leading-tight text-white/90">
+                        {t('settings.entertainmentCapsulePrefix')}{t(`tasks.${triggeredTask.taskId}.title`, { defaultValue: triggeredTask.title })}
                       </span>
+                    ) : (
+                      <span className="truncate text-sm font-medium leading-tight text-white/90">
+                        {t('settings.entertainmentCapsuleIdle')}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 右：操作按钮（triggered） */}
+                <div className="flex items-center gap-2 shrink-0">
+
+                  {phase === 'triggered' && triggeredTask && (
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        size="default"
+                        className="justify-center gap-1 pointer-events-auto rounded-2xl bg-white/10 text-white hover:bg-white/20"
+                        onClick={handleSnooze}
+                        disabled={dismissing}
+                      >
+                        <Clock3 size={14} />
+                        {entertainmentSnoozeMinutes}{t('time.minutes')}
+                      </Button>
+                      <Button
+                        size="default"
+                        className="justify-center gap-1 pointer-events-auto rounded-2xl bg-white text-neutral-900 hover:bg-white/90"
+                        onClick={handleDone}
+                        disabled={dismissing}
+                      >
+                        <Check size={12} />
+                        {t('settings.entertainmentDone')}
+                      </Button>
                     </div>
                   )}
                 </div>
-
-                {/* 操作按钮 */}
-                {phase === 'triggered' && triggeredTask && (
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <Button
-                      size="default"
-                      className="justify-center gap-1 pointer-events-auto rounded-2xl bg-white/10 text-white hover:bg-white/20"
-                      onClick={handleSnooze}
-                      disabled={dismissing}
-                    >
-                      <Clock3 size={14} />
-                      {entertainmentSnoozeMinutes}{t('time.minutes')}
-                    </Button>
-                    <Button
-                      size="default"
-                      className="justify-center gap-1 pointer-events-auto rounded-2xl bg-white text-neutral-900 hover:bg-white/90"
-                      onClick={handleDone}
-                      disabled={dismissing}
-                    >
-                      <Check size={12} />
-                      {t('settings.entertainmentDone')}
-                    </Button>
-                  </div>
-                )}
               </motion.div>
             </AnimatePresence>
           </div>
