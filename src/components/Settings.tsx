@@ -592,14 +592,14 @@ function ReminderEditorDialog({
                   itemKey={(id: string) => id}
                   className="flex flex-wrap gap-1.5"
                   renderItem={(id: string) => (
-                    <Chip variant="secondary" className="h-6 rounded-full px-2 text-type-badge pt-[2.5px] pb-[1.5px]">
+                    <Chip variant="secondary" className="h-6 rounded-full px-2 text-type-badge">
                       {exerciseNameById(id)}
                     </Chip>
                   )}
                   renderRest={() => (
-                    <span className="inline-flex h-6 shrink-0 items-center rounded-full bg-secondary px-2 text-type-badge pt-[2.5px] pb-[1.5px] text-secondary-foreground">
+                    <Chip variant="secondary" className="h-6 rounded-full px-2 text-type-badge">
                       +{draft.exerciseIds!.length}
-                    </span>
+                    </Chip>
                   )}
                 />
               )}
@@ -1361,7 +1361,7 @@ export function Settings({ isStandalone = false, initialTab }: SettingsProps) {
                         <Chip
                           key={app.id}
                           variant="secondary"
-                          className="h-6 rounded-full px-2 text-type-badge pt-[2.5px] pb-[1.5px]"
+                          className="h-6 rounded-full px-2 text-type-badge"
                           onRemove={() => handleRemoveApp(app.id)}
                         >
                           {app.name}
@@ -1565,7 +1565,7 @@ function ExerciseSelector({
   ];
 
   return (
-    <div className="space-y-3">
+    <div className="flex h-full flex-col gap-3">
       <div className="flex items-center justify-between gap-2 text-type-caption">
         <span className="text-muted-foreground">
           {t('settings.exerciseSelectedCount', { count: selectedIds.length })}
@@ -1583,14 +1583,14 @@ function ExerciseSelector({
 
       {/* chips 区域 - 无折叠、无 max-h，复用统一 Chip 组件 */}
       {selectedIds.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex max-h-[140px] min-h-0 flex-wrap gap-1.5 overflow-y-auto pr-1">
           {selectedIds.map((id) => {
             const ex = exercises.find((e) => e.id === id);
             return (
               <Chip
                 key={id}
                 variant="secondary"
-                className="h-6 rounded-full px-2 text-type-badge pt-[2.5px] pb-[1.5px]"
+                className="h-6 rounded-full px-2 text-type-badge"
                 onRemove={() => handleRemove(id)}
               >
                 <span className="max-w-[120px] truncate">{ex?.name ?? id}</span>
@@ -1606,6 +1606,7 @@ function ExerciseSelector({
 
       {/* Tabs - 5 分类，line 样式，Panel 加 keepMounted（base-ui 库内建）*/}
       <Tabs
+        className="mt-auto"
         value={activeCategory}
         onValueChange={(v) => setActiveCategory(v as keyof typeof categoryNames)}
       >

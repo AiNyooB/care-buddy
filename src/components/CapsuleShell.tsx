@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { AnimatePresence, motion } from 'motion/react';
 import { FloatingPreview } from './FloatingPreview';
 import { EntertainmentPreview } from './EntertainmentPreview';
+import { getEntertainmentActive } from '../services';
 
 export function CapsuleShell() {
   const [mode, setMode] = useState<'floating' | 'entertainment'>('floating');
@@ -23,6 +24,11 @@ export function CapsuleShell() {
 
   useEffect(() => {
     const cleanups: (() => void)[] = [];
+
+    // mount 时同步后端当前娱乐模式状态，避免事件在 listen 注册前已发出导致状态丢失
+    getEntertainmentActive()
+      .then((active) => setMode(active ? 'entertainment' : 'floating'))
+      .catch(console.warn);
 
     listen<{ active: boolean }>('entertainment-mode-changed', (event) => {
       setMode(event.payload.active ? 'entertainment' : 'floating');

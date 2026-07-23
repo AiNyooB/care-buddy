@@ -159,11 +159,11 @@
   /* ========================================
      Chart Colors
      ======================================== */
-  --chart-1: oklch(0.546 0.245 262.881);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.55 0.18 227);
-  --chart-4: oklch(0.65 0.17 84);
-  --chart-5: oklch(0.60 0.19 70);
+  --chart-1: oklch(0.70 0.17 40);
+  --chart-2: oklch(0.68 0.12 175);
+  --chart-3: oklch(0.62 0.19 295);
+  --chart-4: oklch(0.68 0.16 330);
+  --chart-5: oklch(0.72 0.15 140);
 
   /* ========================================
      Shadows
@@ -320,11 +320,11 @@
   /* ========================================
      Chart Colors — dark
      ======================================== */
-  --chart-1: oklch(0.65 0.20 263);
-  --chart-2: oklch(0.70 0.12 185);
-  --chart-3: oklch(0.70 0.15 227);
-  --chart-4: oklch(0.75 0.14 84);
-  --chart-5: oklch(0.70 0.16 70);
+  --chart-1: oklch(0.78 0.15 40);
+  --chart-2: oklch(0.78 0.11 175);
+  --chart-3: oklch(0.72 0.17 295);
+  --chart-4: oklch(0.78 0.15 330);
+  --chart-5: oklch(0.82 0.14 140);
 
   /* ========================================
      Shadows — dark (darker alpha)
@@ -413,6 +413,21 @@ html.floating-mode #app {
   display: none;
 }
 
+/* 光学居中（渐进增强）：
+   现代浏览器（含发布时 WebView2/Chromium ≈ Edge 132+）用规范级 text-box-trim
+   直接裁掉字体度量里看不见的上下半行空白，替代 badgeVariants 中的手动 pt/pb 魔法数字。
+   不支持的浏览器（旧 WebView / Firefox Android 等）自动回退到 pt-[2.5px] pb-[1.5px]，不退化。 */
+@supports (text-box-trim: both) {
+  [data-slot="badge"],
+  [data-slot="chip"] {
+    padding-top: 0;
+    padding-bottom: 0;
+    text-box-trim: both;
+    /* care-buddy 的 badge/chip 内容是中文运动名，用 text 边缘（字形内容盒）裁切最稳 */
+    text-box-edge: text;
+  }
+}
+
 /* 网格调试背景 */
 .grid-debug::before {
   content: '';
@@ -435,7 +450,7 @@ html.floating-mode #app {
 
 @theme inline {
   --secondary: oklch(96.7% 0.001 286.4);
-  --chart-1: oklch(64.6% 0.222 41.1);
+  --chart-1: oklch(70% 0.17 40);
   --muted-foreground: oklch(55.2% 0.014 285.9);
   --color-muted-foreground: var(--muted-foreground);
   --color-chart-1: var(--chart-1);
